@@ -22,7 +22,7 @@ y_test = tf.one_hot(y_test, 10)
 
 
 def train(model, training_x, training_y, testing_x, testing_y, name,
-          epoch=1, batch_size=32, lr=1e-3, model_path='drive/MyDrive/models/mnist/'):
+          epoch=1, batch_size=32, lr=1e-3, model_path='/content/drive/MyDrive/models/mnist/'):
     '''
     Train a model, wrapper for model.fit
 
