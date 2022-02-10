@@ -128,7 +128,7 @@ def accuracy_on_shift(model, model_full_name, max_shift=5):
     '''
     acc_dump_name = model_full_name + '_' + str(max_shift) + '.acc'
 
-    if os.isfile():
+    if os.path.isfile():
         with open(acc_dump_name, 'r') as file:
             print(f'Accuracies loaded from {acc_dump_name}')
             return pickle.load(file)
