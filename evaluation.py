@@ -64,11 +64,16 @@ def init_model(model, lr=1e-3):
     Parameter:
         model: keras.Model, the model to compile
         lr: float, the learning rate, default: 1e-3 
+
+    Return:
+        initialized model
     '''
     model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
                   loss=tf.keras.losses.CategoricalCrossentropy(),
                   metrics=[tf.keras.metrics.CategoricalAccuracy(name='acc')])
     model.summary()
+
+    return model
 
 
 def x_shift(x, pad_width=10):
