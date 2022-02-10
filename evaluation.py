@@ -5,6 +5,8 @@ from tensorflow.keras.layers import Conv2D, MaxPool2D, Flatten, Dense
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 import datetime
+import pickle
+import os
 
 
 # Loading in and preprocessing the data
@@ -37,11 +39,16 @@ def train(model, training_x, training_y, testing_x, testing_y, name,
         batch_size: int, the batch size, default 32
         lr: float, the learning rate, default 1e-3, overwrites existing learning rate
         model_path: str, the path to save the model, saves to google drive by default
+
+    Return:
+        A string, the full name of the model
     '''
     model.optimizer.learning_rate.assign(lr)
 
     current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    model_save_dir = model_path + name + '/' + current_time + '.ckpt'
+    model_full_name = model_path + name + '/' + current_time
+    model_save_dir = model_full_name + '.ckpt'
+    hist_save_dir = model_full_name + '.hist'
 
     cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=model_save_dir,
                                                      save_weights_only=True,
@@ -51,10 +58,16 @@ def train(model, training_x, training_y, testing_x, testing_y, name,
                         validation_data=(testing_x, testing_y),
                         callbacks=[cp_callback])
 
+    with open(hist_save_dir, 'w+') as file:
+        pickle.dump(history, file)
+        print(f'History dumped to {hist_save_dir}')
+
     fig, (ax1, ax2) = plt.subplots(1, 2)
     ax1.plot(history.history['acc'])
     ax2.plot(history.history['loss'])
     fig.show()
+
+    return model_full_name
 
 
 def init_model(model, lr=1e-3):
@@ -102,9 +115,9 @@ def x_shift(x, pad_width=10):
     return _shift
 
 
-def accuracy_on_shift(model, max_shift=5):
+def accuracy_on_shift(model, model_full_name, max_shift=5):
     '''
-    Evaluates the model with different offsets
+    Evaluates the model with different offsets, loads the file if exists one with model_full_name
 
     Parameter:
         model: keras.Model, the model to evaluate
@@ -113,6 +126,13 @@ def accuracy_on_shift(model, max_shift=5):
     Return:
         a 2D np.ndarray, representing the accuracy after a col and row shift represented by the index
     '''
+    acc_dump_name = model_full_name + '_' + str(max_shift) + '.acc'
+
+    if os.isfile():
+        with open(acc_dump_name, 'r') as file:
+            print(f'Accuracies loaded from {acc_dump_name}')
+            return pickle.load(file)
+
     x_test_shift = x_shift(x_test, pad_width=max_shift + 1)
 
     x = np.arange(-max_shift, max_shift + 1, 1)
@@ -121,6 +141,10 @@ def accuracy_on_shift(model, max_shift=5):
     accuracies = np.array([[model.evaluate(x_test_shift(col, row), y_test)[1]
                             for row in x]
                            for col in y])
+
+    with open(acc_dump_name, 'r') as file:
+        pickle.dump(accuracies, file)
+        print(f'Accuracies dumped into {acc_dump_name}')
 
     return accuracies
 
