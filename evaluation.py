@@ -58,7 +58,7 @@ def train(model, training_x, training_y, testing_x, testing_y, name,
                         validation_data=(testing_x, testing_y),
                         callbacks=[cp_callback])
 
-    with open(hist_save_dir, 'w+') as file:
+    with open(hist_save_dir, 'wb+') as file:
         pickle.dump(history, file)
         print(f'History dumped to {hist_save_dir}')
 
