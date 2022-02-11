@@ -115,20 +115,21 @@ def x_shift(x, pad_width=10):
     return _shift
 
 
-def accuracy_on_shift(model, model_full_name, max_shift=5):
+def accuracy_on_shift(model, model_full_name, max_shift=5, override=False):
     '''
     Evaluates the model with different offsets, loads the file if exists one with model_full_name
 
     Parameter:
         model: keras.Model, the model to evaluate
         max_shift: int, the maximum number of units during evaluation
+        overwrite: bool, if override the existing file
 
     Return:
         a 2D np.ndarray, representing the accuracy after a col and row shift represented by the index
     '''
     acc_dump_name = model_full_name + '_' + str(max_shift) + '.acc'
 
-    if os.path.isfile(acc_dump_name):
+    if os.path.isfile(acc_dump_name) and not override:
         with open(acc_dump_name, 'rb') as file:
             print(f'Accuracies loaded from {acc_dump_name}')
             return pickle.load(file)
