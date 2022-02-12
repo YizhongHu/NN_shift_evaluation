@@ -1,4 +1,3 @@
-from sklearn.model_selection import learning_curve
 import tensorflow as tf
 import numpy as np
 from tensorflow.keras.layers import Conv2D, MaxPool2D, Flatten, Dense
@@ -8,23 +7,92 @@ import datetime
 import pickle
 import os
 
+import wandb
+from wandb.keras import WandbCallback
 
-# Loading in and preprocessing the data
-mnist = tf.keras.datasets.mnist
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
-x_train, x_test = x_train / 255.0, x_test / 255.0  # normalizing data
-x_train = x_train.astype(np.float32)
-x_test = x_test.astype(np.float32)
-
-x_train = np.reshape(x_train, (-1, 28, 28, 1))
-x_test = np.reshape(x_test, (-1, 28, 28, 1))
-
-y_train = tf.one_hot(y_train, 10)
-y_test = tf.one_hot(y_test, 10)
+project_name = 'my-test-project'
 
 
-def train(model, training_x, training_y, testing_x, testing_y, name,
-          epoch=1, batch_size=32, lr=1e-3, model_path='/content/drive/MyDrive/models/mnist/'):
+def load(training_size=50000):
+    '''
+    Load raw data and save as artifact
+    '''
+    with wandb.init(project=project_name, job_type='load-data') as run:
+        # Load data from MNIST
+        mnist = tf.keras.datasets.mnist
+        (x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+        # Separate into training and validation
+        x_train, x_val = x_train[:training_size], x_train[training_size:]
+        y_train, y_val = y_train[:training_size], y_train[training_size:]
+
+        # Register as artifact
+        datasets = {'x': x_train, 'y': y_train}, {
+            'x': x_val, 'y': y_val}, {'x': x_test, 'y': y_test}
+        names = ['training', 'validation', 'testing']
+
+        raw_data = wandb.Artifact(
+            'mnist-raw', type='dataset',
+            description="Raw MNIST dataset, split into train/val/test",
+            metadata={"source": "keras.datasets.mnist",
+                      "sizes": [len(dataset) for dataset in datasets]})
+
+        # Create files
+        for name, data in zip(names, datasets):
+            with raw_data.new_file(name + '.npz', mode='wb') as file:
+                x, y = data
+                np.savez(file, **data)
+
+        run.log_artifact(raw_data)
+
+
+def preprocess(steps):
+    def extract(dataset, normalize=True, expand_dims=True):
+        x, y = dataset
+
+        if normalize:
+            x = x / 255.0
+
+        x = x.astype(np.float32)
+
+        if expand_dims:
+            x = np.reshape(x, (-1, 28, 28, 1))
+
+        y = np.eye(10)[y]
+
+        return {'x': x, 'y': y}
+
+    def read(data_dir, split):
+        filename = split + ".npz"
+        with open(os.path.join(data_dir, filename), 'rb') as file:
+            npzfile = np.load(file)
+            x, y = npzfile['x'], npzfile['y']
+            return x, y
+
+    with wandb.init(project=project_name, job_type='preprocess-data') as run:
+
+        # Create artifact
+        processed_data = wandb.Artifact(
+            'mnist-preprocess', type='dataset',
+            description='Preprocessed MINST dataset',
+            metadata=steps)
+
+        # Load raw data
+        raw_data_artifact = wandb.use_artifact('mnist-raw:latest')
+        raw_dataset = raw_data_artifact.download()
+
+        # Save preprocessed data
+        for split in ['training', 'validation', 'testing']:
+            raw_split = read(raw_dataset, split)
+            preprocessed_dataset = extract(raw_split, **steps)
+
+            with processed_data.new_file(split + '.npz', mode='wb') as file:
+                np.savez(file, **preprocessed_dataset)
+
+        run.log_artifact(processed_data)
+
+
+def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, batch_size=32, lr=1e-3):
     '''
     Train a model, wrapper for model.fit
 
@@ -45,29 +113,52 @@ def train(model, training_x, training_y, testing_x, testing_y, name,
     '''
     model.optimizer.learning_rate.assign(lr)
 
-    current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    model_full_name = model_path + name + '/' + current_time
-    model_save_dir = model_full_name + '.ckpt'
-    hist_save_dir = model_full_name + '.hist'
+    wandb.init(project="my-test-project",
+               entity="yizhonghu",
+               group=name,
+               job_type='train',
+               config={
+                   "model": name,
+                   "dataset": "MNIST",
+                   "learning_rate": lr,
+                   "epochs": epoch,
+                   "batch_size": batch_size
+               }
+               )
 
-    cp_callback = tf.keras.callbacks.ModelCheckpoint(filepath=model_save_dir,
-                                                     save_weights_only=True,
-                                                     verbose=1)
     history = model.fit(x=training_x, y=training_y,
                         epochs=epoch, batch_size=batch_size,
                         validation_data=(testing_x, testing_y),
-                        callbacks=[cp_callback])
-
-    with open(hist_save_dir, 'wb+') as file:
-        pickle.dump(history, file)
-        print(f'History dumped to {hist_save_dir}')
-
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    ax1.plot(history.history['acc'])
-    ax2.plot(history.history['loss'])
-    fig.show()
+                        callbacks=[WandbCallback()])
 
     return model_full_name
+
+
+def create_mlp(hidden_layer_sizes=[16, 16], activation='relu'):
+    model = tf.keras.models.Sequential()
+    model.add(Flatten(input_shape=(28, 28, 1)))
+    for size in hidden_layer_sizes[:-1]:
+        model.add(Dense(size, activation=activation))
+    model.add(Dense(hidden_layer_sizes[-1], activation='softmax'))
+
+    return model, 'MLP', 'Simple MLP with Hidden Layers'
+
+
+def build_model(create_fn, config):
+    with wandb.init(project=project_name, job_type="initialize-model", config=config) as run:
+        config = wandb.config
+        model, model_name, desc = create_fn(**config)
+
+        # Create Artifact
+        model_artifact = wandb.Artifact(
+            model_name, type="model",
+            description=desc,
+            metadata=config)
+
+        # Save model
+        model.save("initialized_model.tf")
+        model_artifact.add_file("initialized_model.tf")
+        run.log_artifact(model_artifact)
 
 
 def init_model(model, lr=1e-3):
@@ -115,7 +206,7 @@ def x_shift(x, pad_width=10):
     return _shift
 
 
-def accuracy_on_shift(model, model_full_name, max_shift=5, override=False):
+def accuracy_on_shift(model, max_shift=5):
     '''
     Evaluates the model with different offsets, loads the file if exists one with model_full_name
 
@@ -127,12 +218,6 @@ def accuracy_on_shift(model, model_full_name, max_shift=5, override=False):
     Return:
         a 2D np.ndarray, representing the accuracy after a col and row shift represented by the index
     '''
-    acc_dump_name = model_full_name + '_' + str(max_shift) + '.acc'
-
-    if os.path.isfile(acc_dump_name) and not override:
-        with open(acc_dump_name, 'rb') as file:
-            print(f'Accuracies loaded from {acc_dump_name}')
-            return pickle.load(file)
 
     x_test_shift = x_shift(x_test, pad_width=max_shift + 1)
 
@@ -142,10 +227,6 @@ def accuracy_on_shift(model, model_full_name, max_shift=5, override=False):
     accuracies = np.array([[model.evaluate(x_test_shift(col, row), y_test)[1]
                             for row in x]
                            for col in y])
-
-    with open(acc_dump_name, 'wb+') as file:
-        pickle.dump(accuracies, file)
-        print(f'Accuracies dumped into {acc_dump_name}')
 
     return accuracies
 
@@ -167,7 +248,9 @@ def draw_accuracy(accuracies, name, max_shift=5):
     fig.update_layout(title=name + ' loss at different offset levels',
                       xaxis_title="X offset",
                       yaxis_title="Y offset")
-    fig.show()
+    save_path = os.path.join(wandb.run.dir, 'acc.html')
+    fig.write_html(save_path)
+    return save_path
 
 
 def mean_squared_error(accuracies):
@@ -210,3 +293,14 @@ def shift_data(x, y, num_shift_sample=6000, shift_max=5):
     y_samples = tf.concat(y_samples, axis=0)
 
     return x_samples, y_samples
+
+
+def testing_routine(model, model_name, step, train_shift=5, xtrapo_shift=10, lr=1e-3, batch_size=32, epoch=1):
+    if step == 0:
+        job_type = 'No Shift'
+        dataset = 'MNIST'
+    elif step == 1:
+        job_type = 'Shifted'
+        dataset = 'MNIST_shifted'
+    else:
+        raise ValueError('incorrect step')
