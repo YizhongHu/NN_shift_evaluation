@@ -28,16 +28,23 @@ def create_cnn_model():
 
 
 if __name__ == '__main__':
-    model_mlp = create_mlp_model()
-    init_model(model_mlp)
-    train(model_mlp, x_train, y_train, x_test, y_test,
-          'mlp', epoch=20, model_path='./models')
-    # model_mlp.load_weights('/content/drive/MyDrive/models/mnist/mlp/20220210-213904.ckpt')
-    model_mlp.evaluate(x_test, y_test, callbacks=[WandbCallback()])
-    accuracies_mlp = accuracy_on_shift(model_mlp)
-    wandb.define_metric('MSE_5', summary='max')
-    wandb.run.summary['accuracies'] = accuracies_mlp
-    wandb.run.summary['MSE_5'] = mean_squared_error(accuracies_mlp)
-    save_path = draw_accuracy(accuracies_mlp, 'MLP')
-    with open(save_path) as html:
-        wandb.log({'accuracies_on_shift': wandb.Html(html)})
+
+    config = {
+        "model": {
+            "hidden_layer_sizes": [16, 16],
+            "activation": 'relu'
+        },
+        "train": {
+            "model": 'MLP',
+            "dataset": "mnist",
+            "learning_rate": 1e-3,
+            "epochs": 20,
+            "batch_size": 32
+        }}
+
+    model_mlp = train_model(create_mlp, 'MLP-1', config)
+    config = {
+        'max_shift': 5,
+        'extrapolation': False
+    }
+    evaluate_model(model_mlp, 'MLP-1', config)

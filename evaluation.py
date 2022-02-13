@@ -1,9 +1,11 @@
-from re import X
 import tensorflow as tf
 import numpy as np
-from tensorflow.keras.layers import Conv2D, MaxPool2D, Flatten, Dense
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+
+from tensorflow.keras.layers import Conv2D, MaxPool2D, Flatten, Dense
+from math import floor
+
 import datetime
 import pickle
 import os
@@ -11,7 +13,22 @@ import os
 import wandb
 from wandb.keras import WandbCallback
 
-project_name = 'my-test-project'
+project_name = 'mnist-shift'
+
+mnist = tf.keras.datasets.mnist
+(x_train, y_train), (x_test, y_test) = mnist.load_data()
+
+x_train = x_train.reshape((-1, 28, 28, 1))
+x_test = x_test.reshape((-1, 28, 28, 1))
+
+x_train = x_train / 255.0
+x_test = x_test / 255.0
+
+y_train = tf.one_hot(y_train, 10)
+y_test = tf.one_hot(y_test, 10)
+
+x_train, x_val = x_train[:50000], x_train[50000:]
+y_train, y_val = y_train[:50000], y_train[50000:]
 
 
 def load(training_size=50000):
@@ -124,8 +141,7 @@ def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, ba
                    "learning_rate": lr,
                    "epochs": epoch,
                    "batch_size": batch_size
-               }
-               )
+               })
 
     history = model.fit(x=training_x, y=training_y,
                         epochs=epoch, batch_size=batch_size,
@@ -142,11 +158,11 @@ def create_mlp(hidden_layer_sizes=[16, 16], activation='relu'):
         model.add(Dense(size, activation=activation))
     model.add(Dense(10, activation='softmax'))
 
-    return model, 'MLP', 'Simple MLP with Hidden Layers'
+    return model
 
 
-def train_model(create_fn, config):
-    with wandb.init(project=project_name, job_type="train-model", config=config) as run:
+def train_model(create_fn, exp_name, config):
+    with wandb.init(project=project_name, job_type="train-model", group=exp_name, config=config) as run:
         config = wandb.config
 
         model_config = config['model']
@@ -172,7 +188,7 @@ def train_model(create_fn, config):
                                                                      for name in ['training', 'validation', 'testing'])
 
         # Create model and train
-        model, model_name, desc = create_fn(**model_config)
+        model = create_fn(**model_config)
         model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=train_config['learning_rate']),
                       loss=tf.keras.losses.CategoricalCrossentropy(),
                       metrics=[tf.keras.metrics.CategoricalAccuracy(name='acc')])
@@ -182,16 +198,7 @@ def train_model(create_fn, config):
                   batch_size=train_config['batch_size'],
                   callbacks=[WandbCallback()])
 
-        # Create Artifact
-        model_artifact = wandb.Artifact(
-            model_name, type="model",
-            description=desc,
-            metadata=config)
-
-        # Save model
-        model.save("trained_model")
-        model_artifact.add_dir("trained_model")
-        run.log_artifact(model_artifact)
+    return model
 
 
 def sample_shift(config):
@@ -210,7 +217,10 @@ def sample_shift(config):
         for name in ['training', 'validation', 'testing']:
             file_name = name + '.npz'
             with np.load(os.path.join(data_preprocess_dir, file_name), 'rb') as file:
-                x, y = shift_data(x=file['x'], y=file['y'], **config)
+                x, y = file['x'], file['y']
+                num_shift_sample = floor(x.shape[0] * config['sample_rate'])
+                x, y = shift_data(
+                    x, y, num_shift_sample=num_shift_sample, shift_max=config['shift_max'])
             with dataset_shift_artifact.new_file(file_name, 'wb') as file:
                 np.savez(file, x=x, y=y)
 
@@ -351,12 +361,16 @@ def shift_data(x, y, num_shift_sample=6000, shift_max=5):
     return x_samples, y_samples
 
 
-def testing_routine(model, model_name, step, train_shift=5, xtrapo_shift=10, lr=1e-3, batch_size=32, epoch=1):
-    if step == 0:
-        job_type = 'No Shift'
-        dataset = 'MNIST'
-    elif step == 1:
-        job_type = 'Shifted'
-        dataset = 'MNIST_shifted'
-    else:
-        raise ValueError('incorrect step')
+def evaluate_model(model, exp_name, config):
+    with wandb.init(project=project_name, job_type='evaluate-model', group=exp_name, config=config) as run:
+        model.evaluate(x_test, y_test, callbacks=[WandbCallback()])
+        accuracies_mlp = accuracy_on_shift(
+            model, max_shift=config['max_shift'])
+        run.summary['accuracies'] = accuracies_mlp
+        if not config['extrapolation']:
+            run.summary['MSE'] = mean_squared_error(accuracies_mlp)
+        else:
+            run.summary['MSE_Xtra'] = mean_squared_error(accuracies_mlp)
+        save_path = draw_accuracy(accuracies_mlp, 'MLP')
+        with open(save_path) as html:
+            wandb.log({'accuracies_on_shift': wandb.Html(html)})
