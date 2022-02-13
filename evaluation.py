@@ -192,6 +192,7 @@ def train_model(create_fn, exp_name, config):
         model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=train_config['learning_rate']),
                       loss=tf.keras.losses.CategoricalCrossentropy(),
                       metrics=[tf.keras.metrics.CategoricalAccuracy(name='acc')])
+        model.summary()
         model.fit(x=x_train, y=y_train,
                   validation_data=(x_val, y_val),
                   epochs=train_config['epochs'],
@@ -291,8 +292,8 @@ def accuracy_on_shift(model, max_shift=5):
     y = np.arange(-max_shift, max_shift + 1, 1)
 
     accuracies = np.array([[model.evaluate(x_test_shift(col, row), y_test)[1]
-                            for row in x]
-                           for col in y])
+                            for row in y]
+                           for col in x])
 
     return accuracies
 
@@ -381,10 +382,12 @@ def evaluate_model(model, exp_name, config):
 
         x_test, y_test = load_data('testing')
 
+        # Evaluate with the loaded data
         res = model.evaluate(x_test, y_test, callbacks=[])
         run.summary['test_loss'] = res[0]
         run.summary['test_acc'] = res[1]
 
+        # Check the accuracies on shift
         accuracies_mlp = accuracy_on_shift(
             model, max_shift=config['max_shift'])
         run.summary['accuracies'] = accuracies_mlp
@@ -392,13 +395,16 @@ def evaluate_model(model, exp_name, config):
             run.summary['MSE'] = mean_squared_error(accuracies_mlp)
         else:
             train_shift = config['train_shift']
+            shape = accuracies_mlp.shape
+            center_x, center_y = shape[0]//2, shape[1]//2
             run.summary['MSE'] = mean_squared_error(
-                accuracies_mlp[-train_shift:train_shift+1, -train_shift:train_shift+1])
+                accuracies_mlp[center_x-train_shift:center_x+train_shift+1, center_y-train_shift:center_y+train_shift+1])
             run.summary['MSE_Xtra'] = mean_squared_error(accuracies_mlp)
         save_path = draw_accuracy(
             accuracies_mlp, 'MLP', max_shift=config['max_shift'])
         with open(save_path) as html:
             wandb.log({'accuracies_on_shift': wandb.Html(html)})
+
 
 def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
                conv_layers=[20, 50], pool_type='max',
@@ -408,10 +414,12 @@ def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
                activation='relu'):
     def conv(model, size, pool=True, input_shape=None):
         if input_shape is None:
-            model.add(Conv2D(size, conv_size, activation=activation, padding=conv_padding))
+            model.add(Conv2D(size, conv_size,
+                      activation=activation, padding=conv_padding))
         else:
-            model.add(Conv2D(size, conv_size, activation=activation, padding=conv_padding, input_shape=input_shape))
-        
+            model.add(Conv2D(size, conv_size, activation=activation,
+                      padding=conv_padding, input_shape=input_shape))
+
         if pool:
             if pool_type == 'max':
                 model.add(MaxPool2D(pool_size))
@@ -435,10 +443,16 @@ def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
             conv(model, layer)
         model.add(Flatten())
     model.add(Dropout(conv_dropout))
-    
+
     for layer in hidden_layers:
         model.add(Dense(layer, activation=activation))
     model.add(Dropout(dense_dropout))
     model.add(Dense(10, activation='softmax'))
 
     return model
+
+
+def load_model(id):
+    with wandb.init(project=project_name, id=id, resume=True) as run:
+        model = tf.keras.models.load_model(wandb.restore('model-best.h5').name)
+        return model
