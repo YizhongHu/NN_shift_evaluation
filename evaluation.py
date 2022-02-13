@@ -371,6 +371,6 @@ def evaluate_model(model, exp_name, config):
             run.summary['MSE'] = mean_squared_error(accuracies_mlp)
         else:
             run.summary['MSE_Xtra'] = mean_squared_error(accuracies_mlp)
-        save_path = draw_accuracy(accuracies_mlp, 'MLP')
+        save_path = draw_accuracy(accuracies_mlp, 'MLP', max_shift=config['max_shift'])
         with open(save_path) as html:
             wandb.log({'accuracies_on_shift': wandb.Html(html)})
