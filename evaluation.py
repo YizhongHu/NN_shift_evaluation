@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
-from tensorflow.keras.layers import Conv2D, MaxPool2D, Flatten, Dense
+from tensorflow.keras.layers import Conv2D, MaxPool2D, AveragePooling2D, Flatten, Dense, Dropout, GlobalAveragePooling2D, GlobalMaxPool2D
 from math import floor
 
 import datetime
@@ -384,14 +384,61 @@ def evaluate_model(model, exp_name, config):
         res = model.evaluate(x_test, y_test, callbacks=[])
         run.summary['test_loss'] = res[0]
         run.summary['test_acc'] = res[1]
+
         accuracies_mlp = accuracy_on_shift(
             model, max_shift=config['max_shift'])
         run.summary['accuracies'] = accuracies_mlp
         if not config['extrapolation']:
             run.summary['MSE'] = mean_squared_error(accuracies_mlp)
         else:
+            train_shift = config['train_shift']
+            run.summary['MSE'] = mean_squared_error(
+                accuracies_mlp[-train_shift:train_shift+1, -train_shift:train_shift+1])
             run.summary['MSE_Xtra'] = mean_squared_error(accuracies_mlp)
         save_path = draw_accuracy(
             accuracies_mlp, 'MLP', max_shift=config['max_shift'])
         with open(save_path) as html:
             wandb.log({'accuracies_on_shift': wandb.Html(html)})
+
+def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
+               conv_layers=[20, 50], pool_type='max',
+               conv_padding='valid',
+               global_pool='none', conv_dropout=0.0,
+               hidden_layers=[500], dense_dropout=0.0,
+               activation='relu'):
+    def conv(model, size, pool=True, input_shape=None):
+        if input_shape is None:
+            model.add(Conv2D(size, conv_size, activation=activation, padding=conv_padding))
+        else:
+            model.add(Conv2D(size, conv_size, activation=activation, padding=conv_padding, input_shape=input_shape))
+        
+        if pool:
+            if pool_type == 'max':
+                model.add(MaxPool2D(pool_size))
+            elif pool_type == 'average':
+                model.add(AveragePooling2D(pool_size))
+
+    model = tf.keras.models.Sequential()
+    conv(model, conv_layers[0], input_shape=(28, 28, 1))
+    if global_pool == 'max':
+        for layer in conv_layers[1:-1]:
+            conv(model, layer)
+        conv(model, conv_layers[-1], pool=False)
+        model.add(GlobalMaxPool2D())
+    elif global_pool == 'average':
+        for layer in conv_layers[1:-1]:
+            conv(model, layer)
+        conv(model, conv_layers[-1], pool=False)
+        model.add(GlobalAveragePooling2D())
+    else:
+        for layer in conv_layers[1:]:
+            conv(model, layer)
+        model.add(Flatten())
+    model.add(Dropout(conv_dropout))
+    
+    for layer in hidden_layers:
+        model.add(Dense(layer, activation=activation))
+    model.add(Dropout(dense_dropout))
+    model.add(Dense(10, activation='softmax'))
+
+    return model
