@@ -143,12 +143,12 @@ def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, ba
                    "batch_size": batch_size
                })
 
-    history = model.fit(x=training_x, y=training_y,
-                        epochs=epoch, batch_size=batch_size,
-                        validation_data=(testing_x, testing_y),
-                        callbacks=[WandbCallback()])
+    model.fit(x=training_x, y=training_y,
+              epochs=epoch, batch_size=batch_size,
+              validation_data=(testing_x, testing_y),
+              callbacks=[WandbCallback()])
 
-    return model_full_name
+    return model
 
 
 def create_mlp(hidden_layer_sizes=[16, 16], activation='relu'):
@@ -363,7 +363,27 @@ def shift_data(x, y, num_shift_sample=6000, shift_max=5):
 
 def evaluate_model(model, exp_name, config):
     with wandb.init(project=project_name, job_type='evaluate-model', group=exp_name, config=config) as run:
-        model.evaluate(x_test, y_test, callbacks=[WandbCallback()])
+        # Choose which data to load
+        if config['dataset'] == 'mnist':
+            dataset_artifact = wandb.use_artifact('mnist-preprocess:latest')
+        elif config['dataset'] == 'mnist-shift':
+            dataset_artifact = wandb.use_artifact('mnist-shift:latest')
+        else:
+            raise ValueError('Incorrect name of dataset')
+
+        dataset_dir = dataset_artifact.download()
+
+        # Load data
+        def load_data(name):
+            with np.load(os.path.join(dataset_dir, name + '.npz'), 'rb') as file:
+                x, y = file['x'], file['y']
+                return x, y
+
+        x_test, y_test = load_data(['testing'])
+
+        res = model.evaluate(x_test, y_test, callbacks=[])
+        run.summary['test_loss'] = res[0]
+        run.summary['test_acc'] = res[1]
         accuracies_mlp = accuracy_on_shift(
             model, max_shift=config['max_shift'])
         run.summary['accuracies'] = accuracies_mlp
@@ -371,6 +391,7 @@ def evaluate_model(model, exp_name, config):
             run.summary['MSE'] = mean_squared_error(accuracies_mlp)
         else:
             run.summary['MSE_Xtra'] = mean_squared_error(accuracies_mlp)
-        save_path = draw_accuracy(accuracies_mlp, 'MLP', max_shift=config['max_shift'])
+        save_path = draw_accuracy(
+            accuracies_mlp, 'MLP', max_shift=config['max_shift'])
         with open(save_path) as html:
             wandb.log({'accuracies_on_shift': wandb.Html(html)})

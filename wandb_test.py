@@ -45,6 +45,7 @@ if __name__ == '__main__':
     model_mlp = train_model(create_mlp, 'MLP-1', config)
     config = {
         'max_shift': 5,
-        'extrapolation': False
+        'extrapolation': False,
+        'dataset': 'mnist'
     }
     evaluate_model(model_mlp, 'MLP-1', config)
