@@ -1,3 +1,6 @@
 __pycache__/
 modelsmlp/
+mnistmlp/
 wandb/
+artifacts/
+trained_model/

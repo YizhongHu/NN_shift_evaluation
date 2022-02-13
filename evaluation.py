@@ -1,3 +1,4 @@
+from re import X
 import tensorflow as tf
 import numpy as np
 from tensorflow.keras.layers import Conv2D, MaxPool2D, Flatten, Dense
@@ -137,17 +138,49 @@ def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, ba
 def create_mlp(hidden_layer_sizes=[16, 16], activation='relu'):
     model = tf.keras.models.Sequential()
     model.add(Flatten(input_shape=(28, 28, 1)))
-    for size in hidden_layer_sizes[:-1]:
+    for size in hidden_layer_sizes:
         model.add(Dense(size, activation=activation))
-    model.add(Dense(hidden_layer_sizes[-1], activation='softmax'))
+    model.add(Dense(10, activation='softmax'))
 
     return model, 'MLP', 'Simple MLP with Hidden Layers'
 
 
-def build_model(create_fn, config):
-    with wandb.init(project=project_name, job_type="initialize-model", config=config) as run:
+def train_model(create_fn, config):
+    with wandb.init(project=project_name, job_type="train-model", config=config) as run:
         config = wandb.config
-        model, model_name, desc = create_fn(**config)
+
+        model_config = config['model']
+        train_config = config['train']
+
+        # Choose which data to load
+        if train_config['dataset'] == 'mnist':
+            dataset_artifact = wandb.use_artifact('mnist-preprocess:latest')
+        elif train_config['dataset'] == 'mnist-shift':
+            dataset_artifact = wandb.use_artifact('mnist-shift:latest')
+        else:
+            raise ValueError('Incorrect name of dataset')
+
+        dataset_dir = dataset_artifact.download()
+
+        # Load data
+        def load_data(name):
+            with np.load(os.path.join(dataset_dir, name + '.npz'), 'rb') as file:
+                x, y = file['x'], file['y']
+                return x, y
+
+        (x_train, y_train), (x_val, y_val), (x_test, y_test) = tuple(load_data(name)
+                                                                     for name in ['training', 'validation', 'testing'])
+
+        # Create model and train
+        model, model_name, desc = create_fn(**model_config)
+        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=train_config['learning_rate']),
+                      loss=tf.keras.losses.CategoricalCrossentropy(),
+                      metrics=[tf.keras.metrics.CategoricalAccuracy(name='acc')])
+        model.fit(x=x_train, y=y_train,
+                  validation_data=(x_val, y_val),
+                  epochs=train_config['epochs'],
+                  batch_size=train_config['batch_size'],
+                  callbacks=[WandbCallback()])
 
         # Create Artifact
         model_artifact = wandb.Artifact(
@@ -156,9 +189,32 @@ def build_model(create_fn, config):
             metadata=config)
 
         # Save model
-        model.save("initialized_model.tf")
-        model_artifact.add_file("initialized_model.tf")
+        model.save("trained_model")
+        model_artifact.add_dir("trained_model")
         run.log_artifact(model_artifact)
+
+
+def sample_shift(config):
+    with wandb.init(project=project_name, job_type='sample-shift-data', config=config) as run:
+        config = wandb.config
+
+        dataset_shift_artifact = wandb.Artifact(
+            'mnist-shift', type='dataset',
+            description='Naive Sampled Shifted Data',
+            metadata=dict(config))
+
+        dataset_preprocess_artifact = wandb.use_artifact(
+            'mnist-preprocess:latest')
+        data_preprocess_dir = dataset_preprocess_artifact.download()
+
+        for name in ['training', 'validation', 'testing']:
+            file_name = name + '.npz'
+            with np.load(os.path.join(data_preprocess_dir, file_name), 'rb') as file:
+                x, y = shift_data(x=file['x'], y=file['y'], **config)
+            with dataset_shift_artifact.new_file(file_name, 'wb') as file:
+                np.savez(file, x=x, y=y)
+
+        run.log_artifact(dataset_shift_artifact)
 
 
 def init_model(model, lr=1e-3):
