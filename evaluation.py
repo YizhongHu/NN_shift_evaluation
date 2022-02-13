@@ -379,7 +379,7 @@ def evaluate_model(model, exp_name, config):
                 x, y = file['x'], file['y']
                 return x, y
 
-        x_test, y_test = load_data(['testing'])
+        x_test, y_test = load_data('testing')
 
         res = model.evaluate(x_test, y_test, callbacks=[])
         run.summary['test_loss'] = res[0]
