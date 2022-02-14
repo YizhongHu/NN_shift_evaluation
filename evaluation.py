@@ -151,11 +151,12 @@ def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, ba
     return model
 
 
-def create_mlp(hidden_layer_sizes=[16, 16], activation='relu'):
+def create_mlp(hidden_layer_sizes=[16, 16], dropout=0.0, activation='relu'):
     model = tf.keras.models.Sequential()
     model.add(Flatten(input_shape=(28, 28, 1)))
     for size in hidden_layer_sizes:
         model.add(Dense(size, activation=activation))
+    model.add(Dropout(dropout))
     model.add(Dense(10, activation='softmax'))
 
     return model
