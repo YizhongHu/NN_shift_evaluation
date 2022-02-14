@@ -173,7 +173,7 @@ def train_model(create_fn, exp_name, config):
         if train_config['dataset'] == 'mnist':
             dataset_artifact = wandb.use_artifact('mnist-preprocess:latest')
         elif train_config['dataset'] == 'mnist-shift':
-            dataset_artifact = wandb.use_artifact('mnist-shift:latest')
+            dataset_artifact = wandb.use_artifact('mnist-shift:training')
         else:
             raise ValueError('Incorrect name of dataset')
 
@@ -369,7 +369,7 @@ def evaluate_model(model, exp_name, config):
         if config['dataset'] == 'mnist':
             dataset_artifact = wandb.use_artifact('mnist-preprocess:latest')
         elif config['dataset'] == 'mnist-shift':
-            dataset_artifact = wandb.use_artifact('mnist-shift:latest')
+            dataset_artifact = wandb.use_artifact('mnist-shift:training')
         else:
             raise ValueError('Incorrect name of dataset')
 
@@ -458,21 +458,20 @@ def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
 def load_model(id):
     with wandb.init(project=project_name, id=id, resume=True) as run:
         model = tf.keras.models.load_model(wandb.restore('model-best.h5').name)
-        run_info = {'group': run.group}
-        return model, run_info
+        # run_info = {'group': run.group}
+        return model
 
 
-def top_k_evaluation(id, config):
-    model, run_info = load_model(id)
+def top_k_evaluation(model, exp_name, config):
     with wandb.init(project=project_name,
                     job_type='top-k',
-                    group=run_info['group'],
+                    group=exp_name,
                     config=config) as run:
         # Choose which data to load
         if config['dataset'] == 'mnist':
             dataset_artifact = wandb.use_artifact('mnist-preprocess:latest')
         elif config['dataset'] == 'mnist-shift':
-            dataset_artifact = wandb.use_artifact('mnist-shift:latest')
+            dataset_artifact = wandb.use_artifact('mnist-shift:find-error')
         else:
             raise ValueError('Incorrect name of dataset')
 
@@ -501,4 +500,4 @@ def top_k_evaluation(id, config):
         x_test = tf.gather(x_test, top_k_ind) * 255
         wandb.log({'top-k-error': [wandb.Image(
             image, mode='L', caption=f'pred: {pred}, label: {label}, loss: {loss}')
-        for image, pred, label, loss in zip(x_test, y_pred, y_test, top_k_val)]})
+            for image, pred, label, loss in zip(x_test, y_pred, y_test, top_k_val)]})
