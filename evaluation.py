@@ -224,7 +224,7 @@ def sample_shift(config):
                 x, y = shift_data(
                     x, y, num_shift_sample=num_shift_sample, shift_max=config['shift_max'])
             with dataset_shift_artifact.new_file(file_name, 'wb') as file:
-                np.savez(file, x=x, y=y)
+                np.savez_compressed(file, x=x, y=y)
 
         run.log_artifact(dataset_shift_artifact)
 
