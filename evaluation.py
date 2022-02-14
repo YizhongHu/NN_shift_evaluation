@@ -400,6 +400,8 @@ def evaluate_model(model, exp_name, config):
             run.summary['MSE'] = mean_squared_error(
                 accuracies_mlp[center_x-train_shift:center_x+train_shift+1, center_y-train_shift:center_y+train_shift+1])
             run.summary['MSE_Xtra'] = mean_squared_error(accuracies_mlp)
+        run.summary['min_acc'] = np.amin(accuracies_mlp)
+        run.summary['max_acc'] = np.amax(accuracies_mlp)
         save_path = draw_accuracy(
             accuracies_mlp, 'MLP', max_shift=config['max_shift'])
         with open(save_path) as html:
