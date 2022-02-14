@@ -462,8 +462,8 @@ def load_model(id):
         return model, run_info
 
 
-def top_k_evaluation(config):
-    model, run_info = load_model('1s0x49pr')
+def top_k_evaluation(id, config):
+    model, run_info = load_model(id)
     with wandb.init(project=project_name,
                     job_type='top-k',
                     group=run_info['group'],
