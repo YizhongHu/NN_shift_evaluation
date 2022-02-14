@@ -458,4 +458,47 @@ def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
 def load_model(id):
     with wandb.init(project=project_name, id=id, resume=True) as run:
         model = tf.keras.models.load_model(wandb.restore('model-best.h5').name)
-        return model
+        run_info = {'group': run.group}
+        return model, run_info
+
+
+def top_k_evaluation(config):
+    model, run_info = load_model('1s0x49pr')
+    with wandb.init(project=project_name,
+                    job_type='top-k',
+                    group=run_info['group'],
+                    config=config) as run:
+        # Choose which data to load
+        if config['dataset'] == 'mnist':
+            dataset_artifact = wandb.use_artifact('mnist-preprocess:latest')
+        elif config['dataset'] == 'mnist-shift':
+            dataset_artifact = wandb.use_artifact('mnist-shift:latest')
+        else:
+            raise ValueError('Incorrect name of dataset')
+
+        dataset_dir = dataset_artifact.download()
+
+        # Load data
+        def load_data(name):
+            with np.load(os.path.join(dataset_dir, name + '.npz'), 'rb') as file:
+                x, y = file['x'], file['y']
+                return x, y
+
+        x_test, y_test = load_data('testing')
+
+        # Calculate loss
+        loss_fn = tf.keras.losses.SparseCategoricalCrossentropy(
+            reduction=tf.keras.losses.Reduction.NONE)
+        y_test = tf.math.argmax(y_test, axis=1)
+        y_pred = model.predict(x_test)
+        loss = loss_fn(y_test, y_pred)
+
+        # Pick the highest loss
+        top_k_val, top_k_ind = tf.math.top_k(loss, k=config['k'])
+        y_test = tf.gather(y_test, top_k_ind)
+        y_pred = tf.gather(y_pred, top_k_ind)
+        y_pred = tf.math.argmax(y_pred, axis=1)
+        x_test = tf.gather(x_test, top_k_ind) * 255
+        wandb.log({'top-k-error': [wandb.Image(
+            image, mode='L', caption=f'pred: {pred}, label: {label}, loss: {loss}')
+        for image, pred, label, loss in zip(x_test, y_pred, y_test, top_k_val)]})
