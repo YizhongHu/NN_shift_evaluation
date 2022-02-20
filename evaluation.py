@@ -439,7 +439,7 @@ def evaluate_model(model, exp_name, config):
                 model, max_shift=config['max_shift'])
         elif config['dataset'] == 'mnist-pad':
             accuracies_mlp = accuracy_on_roll(
-                model, x_test, y_train, max_shift=config['max_shift'])
+                model, x_test, y_test, max_shift=config['max_shift'])
         run.summary['accuracies'] = accuracies_mlp
         if not config['extrapolation']:
             run.summary['MSE'] = mean_squared_error(accuracies_mlp)
