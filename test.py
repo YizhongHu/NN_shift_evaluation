@@ -5,13 +5,13 @@ dataset_name = 'mnist-pad'
 model_config = {
     'input_shape': (48, 48, 1),
     'conv_size': (5, 5),
-    'conv_layers': [32, 64, 128, 256],
-    'conv_padding': 'same',
+    'conv_layers': [32, 64, 128],
+    'conv_padding': 'valid',
     'pool_size': (2, 2),
     'pool_type': 'max',
     'global_pool': 'average',
     'conv_dropout': 0.0,
-    'hidden_layers': [64, 64],
+    'hidden_layers': [32, 32],
     'dense_dropout': 0.0,
     'activation': 'relu'
 }

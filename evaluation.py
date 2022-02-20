@@ -321,6 +321,19 @@ def accuracy_on_shift(model, max_shift=5):
     return accuracies
 
 
+def accuracy_on_roll(model, data_x, data_y, max_shift=10):
+    x = np.arange(-max_shift, max_shift + 1, 1)
+    y = np.arange(-max_shift, max_shift + 1, 1)
+
+    xm, ym = np.meshgrid(x, y)
+
+    accuracies = np.array([[model.evaluate(np.roll(data_x, (-y_roll, x_roll), axis=(1, 2)), data_y)[1]
+                            for y_roll in ym]
+                           for x_roll in xm])
+    
+    return accuracies
+
+
 def draw_accuracy(accuracies, name, max_shift=5):
     '''
     Visualize the accuracies at different offsets
@@ -421,8 +434,12 @@ def evaluate_model(model, exp_name, config):
         run.summary['test_acc'] = res[1]
 
         # Check the accuracies on shift
-        accuracies_mlp = accuracy_on_shift(
-            model, max_shift=config['max_shift'])
+        if config['dataset'] in {'mnist', 'mnist-shift'}:
+            accuracies_mlp = accuracy_on_shift(
+                model, max_shift=config['max_shift'])
+        elif config['dataset'] == 'mnist-pad':
+            accuracies_mlp = accuracy_on_roll(
+                model, x_test, y_train, max_shift=config['max_shift'])
         run.summary['accuracies'] = accuracies_mlp
         if not config['extrapolation']:
             run.summary['MSE'] = mean_squared_error(accuracies_mlp)
@@ -435,8 +452,11 @@ def evaluate_model(model, exp_name, config):
             run.summary['MSE_Xtra'] = mean_squared_error(accuracies_mlp)
         run.summary['min_acc'] = np.amin(accuracies_mlp)
         run.summary['max_acc'] = np.amax(accuracies_mlp)
+        run.summary['10%_acc'] = np.percentile(accuracies_mlp, 10)
+        run.summary['90%_acc'] = np.percentile(accuracies_mlp, 90)
+        run.summary['acc_std'] = np.std(accuracies_mlp)
         save_path = draw_accuracy(
-            accuracies_mlp, 'MLP', max_shift=config['max_shift'])
+            accuracies_mlp, exp_name, max_shift=config['max_shift'])
         with open(save_path) as html:
             wandb.log({'accuracies_on_shift': wandb.Html(html)})
 
