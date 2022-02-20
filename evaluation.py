@@ -437,7 +437,8 @@ def evaluate_model(model, exp_name, config):
             wandb.log({'accuracies_on_shift': wandb.Html(html)})
 
 
-def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
+def create_cnn(input_shape=(28, 28, 1),
+               conv_size=(3, 3), pool_size=(2, 2),
                conv_layers=[20, 50], pool_type='max',
                conv_padding='valid',
                global_pool='none', conv_dropout=0.0,
@@ -465,7 +466,7 @@ def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
 
     # Convolution
     model = tf.keras.models.Sequential()
-    conv(model, conv_layers[0], input_shape=(28, 28, 1))
+    conv(model, conv_layers[0], input_shape=input_shape)
     if global_pool == 'max':
         for layer in conv_layers[1:-1]:
             conv(model, layer)
