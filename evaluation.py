@@ -565,7 +565,7 @@ def pad_data(config):
             x, y = npzfile['x'], npzfile['y']
             return x, y
 
-    with wandb.init(project='my-test-project', job_type='pad_data', config=config) as run:
+    with wandb.init(project=project_name, job_type='pad_data', config=config) as run:
         pad_width = config['pad_width']
 
         dataset_artifact = wandb.use_artifact('mnist-preprocess:latest')
