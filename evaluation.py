@@ -325,11 +325,9 @@ def accuracy_on_roll(model, data_x, data_y, max_shift=10):
     x = np.arange(-max_shift, max_shift + 1, 1)
     y = np.arange(-max_shift, max_shift + 1, 1)
 
-    xm, ym = np.meshgrid(x, y)
-
     accuracies = np.array([[model.evaluate(np.roll(data_x, (-y_roll, x_roll), axis=(1, 2)), data_y)[1]
-                            for y_roll in ym]
-                           for x_roll in xm])
+                            for y_roll in y]
+                           for x_roll in x])
     
     return accuracies
 
