@@ -191,6 +191,8 @@ def train_model(create_fn, exp_name, config):
             dataset_artifact = wandb.use_artifact('mnist-preprocess:latest')
         elif train_config['dataset'] == 'mnist-shift':
             dataset_artifact = wandb.use_artifact('mnist-shift:training')
+        elif train_config['dataset'] == 'mnist-pad':
+            dataset_artifact = wandb.use_artifact('mnist-pad:training')
         else:
             raise ValueError('Incorrect name of dataset')
 
@@ -398,6 +400,8 @@ def evaluate_model(model, exp_name, config):
             dataset_artifact = wandb.use_artifact('mnist-preprocess:latest')
         elif config['dataset'] == 'mnist-shift':
             dataset_artifact = wandb.use_artifact('mnist-shift:training')
+        elif config['dataset'] == 'mnist-pad':
+            dataset_artifact = wandb.use_artifact('mnist-pad:latest')
         else:
             raise ValueError('Incorrect name of dataset')
 
