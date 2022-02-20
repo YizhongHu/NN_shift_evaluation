@@ -1,5 +1,6 @@
 from evaluation import *
 
+'''
 exp_name = 'CNN-shift-2'
 dataset_name = 'mnist'
 model_config = {
@@ -10,3 +11,6 @@ model_config = {
 model_cnn = create_mlp(**model_config)
 model_cnn.compile()
 model_cnn.summary()
+'''
+
+sample_shift({'sample_rate': 1/10, 'shift_max': 10})

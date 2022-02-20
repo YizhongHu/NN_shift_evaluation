@@ -65,6 +65,9 @@ def load(training_size=50000):
 
 
 def preprocess(steps):
+    '''
+    Preprocess data for CNN training
+    '''
     def extract(dataset, normalize=True, expand_dims=True):
         x, y = dataset
 
@@ -152,6 +155,9 @@ def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, ba
 
 
 def create_mlp(hidden_layer_sizes=[16, 16], dropout=0.0, activation='relu'):
+    '''
+    Create an mlp with the specified hidden layers. Dropout happens before final layer
+    '''
     model = tf.keras.models.Sequential()
     model.add(Flatten(input_shape=(28, 28, 1)))
     for size in hidden_layer_sizes:
@@ -163,6 +169,17 @@ def create_mlp(hidden_layer_sizes=[16, 16], dropout=0.0, activation='relu'):
 
 
 def train_model(create_fn, exp_name, config):
+    '''
+    wandb wrapper for model.fit
+
+    Parameters:
+        create_fn: The function that creates the model
+        exp_name: The group name of the experiments
+        config: The model and training parameters configuration
+
+    Return:
+        Trained model
+    '''
     with wandb.init(project=project_name, job_type="train-model", group=exp_name, config=config) as run:
         config = wandb.config
 
@@ -204,6 +221,9 @@ def train_model(create_fn, exp_name, config):
 
 
 def sample_shift(config):
+    '''
+    Wandb wrapper for shift_data
+    '''
     with wandb.init(project=project_name, job_type='sample-shift-data', config=config) as run:
         config = wandb.config
 
@@ -364,6 +384,14 @@ def shift_data(x, y, num_shift_sample=6000, shift_max=5):
 
 
 def evaluate_model(model, exp_name, config):
+    '''
+    Evaluate the trained model
+
+    Parameters:
+        model: The trained model
+        exp_name: The group name of the experiment
+        config: evaluation configurations
+    '''
     with wandb.init(project=project_name, job_type='evaluate-model', group=exp_name, config=config) as run:
         # Choose which data to load
         if config['dataset'] == 'mnist':
@@ -415,7 +443,13 @@ def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
                global_pool='none', conv_dropout=0.0,
                hidden_layers=[500], dense_dropout=0.0,
                activation='relu'):
+    '''
+    Creates a CNN
+    '''
     def conv(model, size, pool=True, input_shape=None):
+        '''
+        Creates a convolution layer
+        '''
         if input_shape is None:
             model.add(Conv2D(size, conv_size,
                       activation=activation, padding=conv_padding))
@@ -429,6 +463,7 @@ def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
             elif pool_type == 'average':
                 model.add(AveragePooling2D(pool_size))
 
+    # Convolution
     model = tf.keras.models.Sequential()
     conv(model, conv_layers[0], input_shape=(28, 28, 1))
     if global_pool == 'max':
@@ -447,6 +482,7 @@ def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
         model.add(Flatten())
     model.add(Dropout(conv_dropout))
 
+    # MLP
     for layer in hidden_layers:
         model.add(Dense(layer, activation=activation))
     model.add(Dropout(dense_dropout))
@@ -456,6 +492,9 @@ def create_cnn(conv_size=(3, 3), pool_size=(2, 2),
 
 
 def load_model(id):
+    '''
+    Load the model with the given training run id
+    '''
     with wandb.init(project=project_name, id=id, resume=True) as run:
         model = tf.keras.models.load_model(wandb.restore('model-best.h5').name)
         # run_info = {'group': run.group}
@@ -463,6 +502,9 @@ def load_model(id):
 
 
 def top_k_evaluation(model, exp_name, config):
+    '''
+    Selects top k loss results from all shifted data
+    '''
     with wandb.init(project=project_name,
                     job_type='top-k',
                     group=exp_name,
@@ -501,3 +543,45 @@ def top_k_evaluation(model, exp_name, config):
         wandb.log({'top-k-error': [wandb.Image(
             image, mode='L', caption=f'pred: {pred}, label: {label}, loss: {loss}')
             for image, pred, label, loss in zip(x_test, y_pred, y_test, top_k_val)]})
+
+
+def pad_data(config):
+    '''
+    Pad the data with 0 pixels, with wandb wrapper
+    '''
+    def pad(dataset, pad_width):
+        x, y = dataset
+        x = np.pad(x, ((0, 0),
+                       (pad_width, pad_width),
+                       (pad_width, pad_width),
+                       (0, 0)),
+                   constant_values=((0, 0),) * 4)
+        return {'x': x, 'y': y}
+
+    def read(data_dir, split):
+        filename = split + ".npz"
+        with open(os.path.join(data_dir, filename), 'rb') as file:
+            npzfile = np.load(file)
+            x, y = npzfile['x'], npzfile['y']
+            return x, y
+
+    with wandb.init(project='my-test-project', job_type='pad_data', config=config) as run:
+        pad_width = config['pad_width']
+
+        dataset_artifact = wandb.use_artifact('mnist-preprocess:latest')
+        dataset = dataset_artifact.download()
+
+        pad_data_artifact = wandb.Artifact(
+            'mnist-pad', type='dataset',
+            description="Padded MNIST dataset",
+            metadata=config)
+
+        # Save preprocessed data
+        for split in ['training', 'validation', 'testing']:
+            raw_split = read(dataset, split)
+            padded_dataset = pad(raw_split, pad_width)
+
+            with pad_data_artifact.new_file(split + '.npz', mode='wb') as file:
+                np.savez(file, **padded_dataset)
+
+        run.log_artifact(pad_data_artifact)
