@@ -462,10 +462,10 @@ def evaluate_model(model, exp_name, config):
 def create_cnn(input_shape=(28, 28, 1),
                conv_size=(3, 3), pool_size=(2, 2),
                conv_layers=[20, 50], pool_type='max',
-               conv_padding='valid',
+               conv_padding='valid', conv_bias=True,
                global_pool='none', conv_dropout=0.0,
                hidden_layers=[500], dense_dropout=0.0,
-               activation='relu'):
+               activation='relu', dense_bias=True):
     '''
     Creates a CNN
     '''
@@ -475,16 +475,19 @@ def create_cnn(input_shape=(28, 28, 1),
         '''
         if input_shape is None:
             model.add(Conv2D(size, conv_size,
-                      activation=activation, padding=conv_padding))
+                      activation=activation, padding=conv_padding, use_bias=conv_bias))
         else:
             model.add(Conv2D(size, conv_size, activation=activation,
-                      padding=conv_padding, input_shape=input_shape))
+                      padding=conv_padding, use_bias=conv_bias, input_shape=input_shape,))
 
         if pool:
             if pool_type == 'max':
                 model.add(MaxPool2D(pool_size))
             elif pool_type == 'average':
                 model.add(AveragePooling2D(pool_size))
+            else:
+                # No Pooling
+                pass
 
     # Convolution
     model = tf.keras.models.Sequential()
@@ -507,9 +510,9 @@ def create_cnn(input_shape=(28, 28, 1),
 
     # MLP
     for layer in hidden_layers:
-        model.add(Dense(layer, activation=activation))
+        model.add(Dense(layer, use_bias=dense_bias, activation=activation))
     model.add(Dropout(dense_dropout))
-    model.add(Dense(10, activation='softmax'))
+    model.add(Dense(10, use_bias=dense_bias, activation='softmax'))
 
     return model
 

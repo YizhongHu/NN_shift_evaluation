@@ -1,18 +1,20 @@
 from evaluation import *
 
-exp_name = 'CNN-pad-1'
+exp_name = 'hyp3-t1'
 dataset_name = 'mnist-pad'
 model_config = {
     'input_shape': (48, 48, 1),
-    'conv_size': (5, 5),
-    'conv_layers': [32, 64, 128],
-    'conv_padding': 'valid',
-    'pool_size': (2, 2),
-    'pool_type': 'max',
-    'global_pool': 'average',
+    'conv_size': (3, 3),
+    'conv_layers': [32, 64],
+    'conv_padding': 'same',
+    'conv_bias': False,
+    'pool_size': None,
+    'pool_type': 'none',
+    'global_pool': 'max',
     'conv_dropout': 0.0,
     'hidden_layers': [32, 32],
     'dense_dropout': 0.0,
+    'dense_bias': True,
     'activation': 'relu'
 }
 
