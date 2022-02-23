@@ -328,7 +328,7 @@ def accuracy_on_roll(model, data_x, data_y, max_shift=10):
     accuracies = np.array([[model.evaluate(np.roll(data_x, (-y_roll, x_roll), axis=(1, 2)), data_y)[1]
                             for y_roll in y]
                            for x_roll in x])
-    
+
     return accuracies
 
 
@@ -491,21 +491,24 @@ def create_cnn(input_shape=(28, 28, 1),
 
     # Convolution
     model = tf.keras.models.Sequential()
-    conv(model, conv_layers[0], input_shape=input_shape)
-    if global_pool == 'max':
-        for layer in conv_layers[1:-1]:
+    model.add(tf.keras.Input(shape=input_shape))
+
+    if len(conv_layers) > 1:
+        # Convolution hidden layers
+        for layer in conv_layers[0:-1]:
             conv(model, layer)
+        
+    # Flattening layer
+    if global_pool == 'max':
         conv(model, conv_layers[-1], pool=False)
         model.add(GlobalMaxPool2D())
     elif global_pool == 'average':
-        for layer in conv_layers[1:-1]:
-            conv(model, layer)
         conv(model, conv_layers[-1], pool=False)
         model.add(GlobalAveragePooling2D())
     else:
-        for layer in conv_layers[1:]:
-            conv(model, layer)
+        conv(model, conv_layers[-1], pool=True)
         model.add(Flatten())
+            
     model.add(Dropout(conv_dropout))
 
     # MLP

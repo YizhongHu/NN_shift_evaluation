@@ -1,13 +1,13 @@
 from evaluation import *
 
-exp_name = 'hyp3-t1'
+exp_name = 'hyp3-t4'
 dataset_name = 'mnist-pad'
 model_config = {
     'input_shape': (48, 48, 1),
     'conv_size': (3, 3),
-    'conv_layers': [32, 64],
+    'conv_layers': [32],
     'conv_padding': 'same',
-    'conv_bias': False,
+    'conv_bias': True,
     'pool_size': None,
     'pool_type': 'none',
     'global_pool': 'max',
