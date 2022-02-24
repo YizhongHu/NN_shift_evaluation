@@ -3,7 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
-from tensorflow.keras.layers import Conv2D, MaxPool2D, AveragePooling2D, Flatten, Dense, Dropout, GlobalAveragePooling2D, GlobalMaxPool2D
+from tensorflow.keras.layers import Conv2D, MaxPool2D, AveragePooling2D, Flatten, Dense, \
+                                    Dropout, GlobalAveragePooling2D, GlobalMaxPool2D, ZeroPadding2D
 from math import floor
 
 import datetime
@@ -290,7 +291,7 @@ def x_shift(x, pad_width=10):
     x_padded = np.pad(x, ((0, 0), (pad_width, pad_width),
                       (pad_width, pad_width), (0, 0)), constant_values=((0, 0),) * 4)
 
-    def _shift(col, row):
+    def _shift(row, col):
         return x_padded[:, pad_width - row:-pad_width - row, pad_width - col:-pad_width - col, :]
 
     return _shift
@@ -314,9 +315,9 @@ def accuracy_on_shift(model, max_shift=5):
     x = np.arange(-max_shift, max_shift + 1, 1)
     y = np.arange(-max_shift, max_shift + 1, 1)
 
-    accuracies = np.array([[model.evaluate(x_test_shift(col, row), y_test)[1]
-                            for row in y]
-                           for col in x])
+    accuracies = np.array([[model.evaluate(x_test_shift(row, col), y_test)[1]
+                            for col in y]
+                           for row in x])
 
     return accuracies
 
@@ -325,7 +326,7 @@ def accuracy_on_roll(model, data_x, data_y, max_shift=10):
     x = np.arange(-max_shift, max_shift + 1, 1)
     y = np.arange(-max_shift, max_shift + 1, 1)
 
-    accuracies = np.array([[model.evaluate(np.roll(data_x, (-y_roll, x_roll), axis=(1, 2)), data_y)[1]
+    accuracies = np.array([[model.evaluate(np.roll(data_x, (x_roll, y_roll), axis=(1, 2)), data_y)[1]
                             for y_roll in y]
                            for x_roll in x])
 
@@ -343,7 +344,7 @@ def draw_accuracy(accuracies, name, max_shift=5):
     '''
     x = np.arange(-max_shift, max_shift + 1, 1)
     y = np.arange(-max_shift, max_shift + 1, 1)
-    xm, ym = np.meshgrid(x, y)
+    xm, ym = np.meshgrid(x, y, indexing='ij')
 
     fig = go.Figure(data=[go.Surface(x=xm, y=ym, z=accuracies)])
     fig.update_layout(title=name + ' loss at different offset levels',
@@ -387,7 +388,7 @@ def shift_data(x, y, num_shift_sample=6000, shift_max=5):
         for col in range(-shift_max, shift_max + 1):
             permu = np.random.choice(
                 x.shape[0], num_shift_sample, replace=False)
-            x_samples.append(shift(col, row)[permu, :, :, :])
+            x_samples.append(shift(row, col)[permu, :, :, :])
             y_samples.append(tf.gather(y, permu, axis=0))
 
     x_samples = np.concatenate(x_samples, axis=0)
@@ -473,12 +474,13 @@ def create_cnn(input_shape=(28, 28, 1),
         '''
         Creates a convolution layer
         '''
-        if input_shape is None:
+        if conv_padding in {'valid', 'same'}:
             model.add(Conv2D(size, conv_size,
-                      activation=activation, padding=conv_padding, use_bias=conv_bias))
-        else:
-            model.add(Conv2D(size, conv_size, activation=activation,
-                      padding=conv_padding, use_bias=conv_bias, input_shape=input_shape,))
+                        activation=activation, padding=conv_padding, use_bias=conv_bias))
+        elif conv_padding == 'lossless':
+            model.add(ZeroPadding2D((conv_size[0] - 1, conv_size[1] - 1)))
+            model.add(Conv2D(size, conv_size,
+                        activation=activation, padding='valid', use_bias=conv_bias))
 
         if pool:
             if pool_type == 'max':
@@ -497,7 +499,7 @@ def create_cnn(input_shape=(28, 28, 1),
         # Convolution hidden layers
         for layer in conv_layers[0:-1]:
             conv(model, layer)
-        
+
     # Flattening layer
     if global_pool == 'max':
         conv(model, conv_layers[-1], pool=False)
@@ -508,7 +510,7 @@ def create_cnn(input_shape=(28, 28, 1),
     else:
         conv(model, conv_layers[-1], pool=True)
         model.add(Flatten())
-            
+
     model.add(Dropout(conv_dropout))
 
     # MLP
