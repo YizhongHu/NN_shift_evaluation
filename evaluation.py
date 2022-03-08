@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
 from tensorflow.keras.layers import Conv2D, MaxPool2D, AveragePooling2D, Flatten, Dense, \
-                                    Dropout, GlobalAveragePooling2D, GlobalMaxPool2D, ZeroPadding2D
+    Dropout, GlobalAveragePooling2D, GlobalMaxPool2D, ZeroPadding2D
 from math import floor
 
 import datetime
@@ -194,6 +194,8 @@ def train_model(create_fn, exp_name, config):
             dataset_artifact = wandb.use_artifact('mnist-shift:training')
         elif train_config['dataset'] == 'mnist-pad':
             dataset_artifact = wandb.use_artifact('mnist-pad:latest')
+        elif train_config['dataset'] == 'mnist-shift-pad':
+            dataset_artifact = wandb.use_artifact('mnist-shift-pad:latest')
         else:
             raise ValueError('Incorrect name of dataset')
 
@@ -414,6 +416,8 @@ def evaluate_model(model, exp_name, config):
             dataset_artifact = wandb.use_artifact('mnist-shift:training')
         elif config['dataset'] == 'mnist-pad':
             dataset_artifact = wandb.use_artifact('mnist-pad:latest')
+        elif config['dataset'] == 'mnist-shift-pad':
+            dataset_artifact = wandb.use_artifact('mnist-shift-pad:latest')
         else:
             raise ValueError('Incorrect name of dataset')
 
@@ -436,7 +440,7 @@ def evaluate_model(model, exp_name, config):
         if config['dataset'] in {'mnist', 'mnist-shift'}:
             accuracies_mlp = accuracy_on_shift(
                 model, max_shift=config['max_shift'])
-        elif config['dataset'] == 'mnist-pad':
+        elif config['dataset'] in {'mnist-pad', 'mnist-shift-pad'}:
             accuracies_mlp = accuracy_on_roll(
                 model, x_test, y_test, max_shift=config['max_shift'])
         run.summary['accuracies'] = accuracies_mlp
@@ -476,11 +480,11 @@ def create_cnn(input_shape=(28, 28, 1),
         '''
         if conv_padding in {'valid', 'same'}:
             model.add(Conv2D(size, conv_size,
-                        activation=activation, padding=conv_padding, use_bias=conv_bias))
+                             activation=activation, padding=conv_padding, use_bias=conv_bias))
         elif conv_padding == 'lossless':
             model.add(ZeroPadding2D((conv_size[0] - 1, conv_size[1] - 1)))
             model.add(Conv2D(size, conv_size,
-                        activation=activation, padding='valid', use_bias=conv_bias))
+                             activation=activation, padding='valid', use_bias=conv_bias))
 
         if pool:
             if pool_type == 'max':
