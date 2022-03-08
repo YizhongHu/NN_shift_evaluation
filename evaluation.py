@@ -429,10 +429,10 @@ def evaluate_model(model, exp_name, config):
                 x, y = file['x'], file['y']
                 return x, y
 
-        x_test, y_test = load_data('testing')
+        x_t, y_t = load_data('testing')
 
         # Evaluate with the loaded data
-        res = model.evaluate(x_test, y_test, callbacks=[])
+        res = model.evaluate(x_t, y_t, callbacks=[])
         run.summary['test_loss'] = res[0]
         run.summary['test_acc'] = res[1]
 
@@ -441,8 +441,15 @@ def evaluate_model(model, exp_name, config):
             accuracies_mlp = accuracy_on_shift(
                 model, max_shift=config['max_shift'])
         elif config['dataset'] in {'mnist-pad', 'mnist-shift-pad'}:
+            # Load unshifted data
+            dataset_artifact = wandb.use_artifact('mnist-pad:latest')
+            dataset_dir = dataset_artifact.download()
+            x_t, y_t = load_data('testing')
+            # Evaluate Shifted Accuracies
             accuracies_mlp = accuracy_on_roll(
-                model, x_test, y_test, max_shift=config['max_shift'])
+                model, x_t, y_t, max_shift=config['max_shift'])
+
+        # Record run results
         run.summary['accuracies'] = accuracies_mlp
         if not config['extrapolation']:
             run.summary['MSE'] = mean_squared_error(accuracies_mlp)
