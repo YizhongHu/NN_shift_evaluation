@@ -88,7 +88,8 @@ def preprocess(steps):
         run.log_artifact(processed_data)
 
 
-def data_process(inpt, output, description, job_type, project=project_name, compress=False):
+def data_process(inpt, output, description, job_type, project=project_name, compress=False,
+                 x_in_keys='x', y_in_keys='y', x_out_keys='x', y_out_keys='y'):
     '''
     Wandb wrapper for data processing. Loads training, validation, and testing data from input
     and process them with the function specified
@@ -100,6 +101,10 @@ def data_process(inpt, output, description, job_type, project=project_name, comp
         job_type: wandb job name
         project: which project to commit to, default: project_name
         compress: if the output should be compressed with np.savez_compress, default: False
+        x_in_keys: subarrays of the model inputs to process
+        y_in_keys: subarrays of the model outputs to process
+        x_out_keys: subarrays of the processed model inputs
+        y_out_keys: subarrays of the processed model outputs
 
     Return:
         a functional wrapper
@@ -129,13 +134,16 @@ def data_process(inpt, output, description, job_type, project=project_name, comp
                 for name in ['training', 'validation', 'testing']:
                     file_name = name + '.npz'
                     with np.load(os.path.join(input_dir, file_name), 'rb') as file:
-                        x, y = file['x'], file['y']
+                        x = [file[key] for key in x_in_keys]
+                        y = [file[key] for key in y_in_keys]
                         x, y = func(x, y, **config)
                     with output_artifact.new_file(file_name, 'wb') as file:
+                        arrays = {**dict(zip(x_out_keys, x)),
+                                  **dict(zip(y_out_keys, y))}
                         if compress:
-                            np.savez_compressed(file, x=x, y=y)
+                            np.savez_compressed(file, **arrays)
                         else:
-                            np.savez(file, x=x, y=y)
+                            np.savez(file, **arrays)
 
                 run.log_artifact(output_artifact)
         return wrapper
@@ -187,23 +195,25 @@ def pad_data(x, y, pad_width=10):
     return x, y
 
 
-@data_process('mnist-pad:latest', 'mnist-pad-loc', 'Padded and shifted data with number position', 'roll_loc')
+@data_process(
+    inpt='mnist-pad:latest', output='mnist-pad-loc',
+    description='Padded and shifted data with number position',
+    job_type='roll_loc', y_out_keys=['class', 'coord'])
 def roll_loc_data(x, y, duplicate=1, roll_max=10):
     '''
     For each example, roll it in some random direction and record the roll value with two extra dimensions of output
     '''
     x_samples = list()
-    y_samples = list()
+    y_coords = list()
     for copy in range(duplicate):
         for x_example, y_example in zip(x, y):
             coords = np.random.randint(-roll_max, roll_max + 1, size=2)
             x_samples.append(np.roll(x_example, coords, axis=(
                 0, 1)).reshape((1,) + x_example.shape))
-            y_with_coords = tf.concat((y_example, coords), axis=0)
-            y_samples.append(tf.reshape(
-                y_with_coords, (1,) + y_with_coords.shape))
+            y_coords.append(coords.reshape(1, -1))
 
     x_samples = np.concatenate(x_samples, axis=0)
-    y_samples = tf.concat(y_samples, axis=0)
+    y_samples = tf.concat([y] * duplicate, axis=0)
+    y_coords = np.concatenate(y_coords, axis=0)
 
-    return x_samples, y_samples
+    return x_samples, (y_samples, y_coords)
