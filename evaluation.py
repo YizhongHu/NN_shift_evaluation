@@ -14,105 +14,7 @@ import os
 import wandb
 from wandb.keras import WandbCallback
 
-project_name = 'mnist-shift'
-
-mnist = tf.keras.datasets.mnist
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
-
-x_train = x_train.reshape((-1, 28, 28, 1))
-x_test = x_test.reshape((-1, 28, 28, 1))
-
-x_train = x_train / 255.0
-x_test = x_test / 255.0
-
-y_train = tf.one_hot(y_train, 10)
-y_test = tf.one_hot(y_test, 10)
-
-x_train, x_val = x_train[:50000], x_train[50000:]
-y_train, y_val = y_train[:50000], y_train[50000:]
-
-
-def load(training_size=50000):
-    '''
-    Load raw data and save as artifact
-    '''
-    with wandb.init(project=project_name, job_type='load-data') as run:
-        # Load data from MNIST
-        mnist = tf.keras.datasets.mnist
-        (x_train, y_train), (x_test, y_test) = mnist.load_data()
-
-        # Separate into training and validation
-        x_train, x_val = x_train[:training_size], x_train[training_size:]
-        y_train, y_val = y_train[:training_size], y_train[training_size:]
-
-        # Register as artifact
-        datasets = {'x': x_train, 'y': y_train}, {
-            'x': x_val, 'y': y_val}, {'x': x_test, 'y': y_test}
-        names = ['training', 'validation', 'testing']
-
-        raw_data = wandb.Artifact(
-            'mnist-raw', type='dataset',
-            description="Raw MNIST dataset, split into train/val/test",
-            metadata={"source": "keras.datasets.mnist",
-                      "sizes": [len(dataset) for dataset in datasets]})
-
-        # Create files
-        for name, data in zip(names, datasets):
-            with raw_data.new_file(name + '.npz', mode='wb') as file:
-                x, y = data
-                np.savez(file, **data)
-
-        run.log_artifact(raw_data)
-
-
-def preprocess(steps):
-    '''
-    Preprocess data for CNN training
-    '''
-    def extract(dataset, normalize=True, expand_dims=True):
-        x, y = dataset
-
-        if normalize:
-            x = x / 255.0
-
-        x = x.astype(np.float32)
-
-        if expand_dims:
-            x = np.reshape(x, (-1, 28, 28, 1))
-
-        y = np.eye(10)[y]
-
-        return {'x': x, 'y': y}
-
-    def read(data_dir, split):
-        filename = split + ".npz"
-        with open(os.path.join(data_dir, filename), 'rb') as file:
-            npzfile = np.load(file)
-            x, y = npzfile['x'], npzfile['y']
-            return x, y
-
-    with wandb.init(project=project_name, job_type='preprocess-data') as run:
-
-        # Create artifact
-        processed_data = wandb.Artifact(
-            'mnist-preprocess', type='dataset',
-            description='Preprocessed MINST dataset',
-            metadata=steps)
-
-        # Load raw data
-        raw_data_artifact = wandb.use_artifact('mnist-raw:latest')
-        raw_dataset = raw_data_artifact.download()
-
-        # Save preprocessed data
-        for split in ['training', 'validation', 'testing']:
-            raw_split = read(raw_dataset, split)
-            preprocessed_dataset = extract(raw_split, **steps)
-
-            with processed_data.new_file(split + '.npz', mode='wb') as file:
-                np.savez(file, **preprocessed_dataset)
-
-        run.log_artifact(processed_data)
-
+from common import *
 
 def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, batch_size=32, lr=1e-3):
     '''
@@ -207,8 +109,8 @@ def train_model(create_fn, exp_name, config):
                 x, y = file['x'], file['y']
                 return x, y
 
-        (x_train, y_train), (x_val, y_val), (x_test, y_test) = tuple(load_data(name)
-                                                                     for name in ['training', 'validation', 'testing'])
+        (x_trn, y_trn), (x_val, y_val), (_, _) = tuple(load_data(name)
+                                                       for name in ['training', 'validation', 'testing'])
 
         # Create model and train
         model = create_fn(**model_config)
@@ -216,42 +118,13 @@ def train_model(create_fn, exp_name, config):
                       loss=tf.keras.losses.CategoricalCrossentropy(),
                       metrics=[tf.keras.metrics.CategoricalAccuracy(name='acc')])
         model.summary()
-        model.fit(x=x_train, y=y_train,
+        model.fit(x=x_trn, y=y_trn,
                   validation_data=(x_val, y_val),
                   epochs=train_config['epochs'],
                   batch_size=train_config['batch_size'],
                   callbacks=[WandbCallback()])
 
     return model
-
-
-def sample_shift(config):
-    '''
-    Wandb wrapper for shift_data
-    '''
-    with wandb.init(project=project_name, job_type='sample-shift-data', config=config) as run:
-        config = wandb.config
-
-        dataset_shift_artifact = wandb.Artifact(
-            'mnist-shift', type='dataset',
-            description='Naive Sampled Shifted Data',
-            metadata=dict(config))
-
-        dataset_preprocess_artifact = wandb.use_artifact(
-            'mnist-preprocess:latest')
-        data_preprocess_dir = dataset_preprocess_artifact.download()
-
-        for name in ['training', 'validation', 'testing']:
-            file_name = name + '.npz'
-            with np.load(os.path.join(data_preprocess_dir, file_name), 'rb') as file:
-                x, y = file['x'], file['y']
-                num_shift_sample = floor(x.shape[0] * config['sample_rate'])
-                x, y = shift_data(
-                    x, y, num_shift_sample=num_shift_sample, shift_max=config['shift_max'])
-            with dataset_shift_artifact.new_file(file_name, 'wb') as file:
-                np.savez_compressed(file, x=x, y=y)
-
-        run.log_artifact(dataset_shift_artifact)
 
 
 def init_model(model, lr=1e-3):
@@ -271,32 +144,6 @@ def init_model(model, lr=1e-3):
     model.summary()
 
     return model
-
-
-def x_shift(x, pad_width=10):
-    '''
-    Returns a function that generates shift of input padded by 0
-
-    Parameters:
-        x: array-like, with 4 dimensions, with the first representing the batch size
-        pad_width: int, the padding given to the image
-
-    Return:
-        A function that shifts the input x
-        Parameters: 
-            col: the number of shifts in the +hor direction
-            row: the number of shifts in the +ver direction
-
-        Return:
-            The input shifted
-    '''
-    x_padded = np.pad(x, ((0, 0), (pad_width, pad_width),
-                      (pad_width, pad_width), (0, 0)), constant_values=((0, 0),) * 4)
-
-    def _shift(row, col):
-        return x_padded[:, pad_width - row:-pad_width - row, pad_width - col:-pad_width - col, :]
-
-    return _shift
 
 
 def accuracy_on_shift(model, max_shift=5):
@@ -368,35 +215,6 @@ def mean_squared_error(accuracies):
         Mean Squared Error
     '''
     return np.mean(np.power(1 - accuracies, 2))
-
-
-def shift_data(x, y, num_shift_sample=6000, shift_max=5):
-    '''
-    Samples shifted data and combines them into one data set
-
-    Parameter:
-        x: np.ndarray, inputs to the model
-        y: np.ndarray, labels of the inputs
-        num_shift_samples: int, number of samples taken from each shifted state, default 6000
-        shift_max: the maximum shift, default 5
-
-    Return:
-        The samples for input and their corresponding labels, in a tuple
-    '''
-    shift = x_shift(x, pad_width=shift_max + 1)
-    x_samples = list()
-    y_samples = list()
-    for row in range(-shift_max, shift_max + 1):
-        for col in range(-shift_max, shift_max + 1):
-            permu = np.random.choice(
-                x.shape[0], num_shift_sample, replace=False)
-            x_samples.append(shift(row, col)[permu, :, :, :])
-            y_samples.append(tf.gather(y, permu, axis=0))
-
-    x_samples = np.concatenate(x_samples, axis=0)
-    y_samples = tf.concat(y_samples, axis=0)
-
-    return x_samples, y_samples
 
 
 def evaluate_model(model, exp_name, config):
@@ -585,151 +403,3 @@ def top_k_evaluation(model, exp_name, config):
         wandb.log({'top-k-error': [wandb.Image(
             image, mode='L', caption=f'pred: {pred}, label: {label}, loss: {loss}')
             for image, pred, label, loss in zip(x_test, y_pred, y_test, top_k_val)]})
-
-
-def pad_data(config):
-    '''
-    Pad the data with 0 pixels, with wandb wrapper
-    '''
-    def pad(dataset, pad_width):
-        x, y = dataset
-        x = np.pad(x, ((0, 0),
-                       (pad_width, pad_width),
-                       (pad_width, pad_width),
-                       (0, 0)),
-                   constant_values=((0, 0),) * 4)
-        return {'x': x, 'y': y}
-
-    def read(data_dir, split):
-        filename = split + ".npz"
-        with open(os.path.join(data_dir, filename), 'rb') as file:
-            npzfile = np.load(file)
-            x, y = npzfile['x'], npzfile['y']
-            return x, y
-
-    with wandb.init(project=project_name, job_type='pad_data', config=config) as run:
-        pad_width = config['pad_width']
-
-        dataset_artifact = wandb.use_artifact('mnist-preprocess:latest')
-        dataset = dataset_artifact.download()
-
-        pad_data_artifact = wandb.Artifact(
-            'mnist-pad', type='dataset',
-            description="Padded MNIST dataset",
-            metadata=config)
-
-        # Save preprocessed data
-        for split in ['training', 'validation', 'testing']:
-            raw_split = read(dataset, split)
-            padded_dataset = pad(raw_split, pad_width)
-
-            with pad_data_artifact.new_file(split + '.npz', mode='wb') as file:
-                np.savez(file, **padded_dataset)
-
-        run.log_artifact(pad_data_artifact)
-
-
-# def roll_loc_data(config):
-#     '''
-#     Wandb wrapper for roll_data_loc
-
-#     Parameters:
-#         config: configuruation for inputs
-#     config = {
-#         'duplicate': 1,
-#         'roll_max': 10
-#     }
-#     '''
-#     with wandb.init(project='my-test-project', job_type='roll_loc', config=config) as run:
-#         dataset_shift_artifact = wandb.Artifact(
-#             'mnist-pad-loc', type='dataset',
-#             description='Padded and shifted data with number position',
-#             metadata=dict(config))
-
-#         dataset_pad_artifact = wandb.use_artifact(
-#             'mnist-pad:latest')
-#         data_pad_dir = dataset_pad_artifact.download()
-
-#         for name in ['training', 'validation', 'testing']:
-#             file_name = name + '.npz'
-#             with np.load(os.path.join(data_pad_dir, file_name), 'rb') as file:
-#                 x, y = file['x'], file['y']
-#                 x, y = roll_data_loc(x, y, **config)
-#             with dataset_shift_artifact.new_file(file_name, 'wb') as file:
-#                 np.savez(file, x=x, y=y)
-
-#         run.log_artifact(dataset_shift_artifact)
-
-
-def data_process(inpt, output, description, job_type, project=project_name, compress=False):
-    '''
-    Wandb wrapper for data processing. Loads training, validation, and testing data from input
-    and process them with the function specified
-
-    Parameters:
-        inpt: name of input dataset artifact
-        output: name of output dataset artifact
-        description: description of output dataset artifact
-        job_type: wandb job name
-        project: which project to commit to, default: project_name
-        compress: if the output should be compressed with np.savez_compress, default: False
-
-    Return:
-        a functional wrapper
-
-    Functional input:
-        func: a function that takes model inputs and outputs and keyword arguments
-            Parameters:
-                x: model inputs
-                y: model outputs
-                **kwargs: keyword arguments for data processing
-    Functional output:
-        a function that takes the keyword arguments, processes data accordingly, and uploads to wandb
-            Parameters:
-                config: dict, keyword arguments
-    '''
-    def functional(func):
-        def wrapper(config):
-            with wandb.init(project=project, job_type=job_type, config=config) as run:
-                output_artifact = wandb.Artifact(
-                    output, type='dataset',
-                    description=description,
-                    metadata=dict(config))
-
-                input_artifact = wandb.use_artifact(inpt)
-                input_dir = input_artifact.download()
-
-                for name in ['training', 'validation', 'testing']:
-                    file_name = name + '.npz'
-                    with np.load(os.path.join(input_dir, file_name), 'rb') as file:
-                        x, y = file['x'], file['y']
-                        x, y = func(x, y, **config)
-                    with output_artifact.new_file(file_name, 'wb') as file:
-                        if compress:
-                            np.savez_compressed(file, x=x, y=y)
-                        else:
-                            np.savez(file, x=x, y=y)
-
-                run.log_artifact(output_artifact)
-        return wrapper
-
-    return functional
-
-
-@data_process('mnist-pad:latest', 'mnist-pad-loc', 'Padded and shifted data with number position', 'roll_loc')
-def roll_loc_data(x, y, duplicate=1, roll_max=10):
-    x_samples = list()
-    y_samples = list()
-    for copy in range(duplicate):
-        for x_example, y_example in zip(x, y):
-            coords = np.random.randint(-roll_max, roll_max + 1, size=2)
-            x_samples.append(np.roll(x_example, coords, axis=(
-                0, 1)).reshape((1,) + x_example.shape))
-            y_with_coords = tf.concat((y_example, coords), axis=0)
-            y_samples.append(tf.reshape(
-                y_with_coords, (1,) + y_with_coords.shape))
-
-    x_samples = np.concatenate(x_samples, axis=0)
-    y_samples = tf.concat(y_samples, axis=0)
-
-    return x_samples, y_samples

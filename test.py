@@ -1,4 +1,5 @@
 from evaluation import *
+from dataset import *
 # exp_name = 'LL-opt6-7x7-1Dense'
 # dataset_name = 'mnist-pad'
 # model_config = {
