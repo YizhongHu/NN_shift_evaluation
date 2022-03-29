@@ -16,6 +16,7 @@ from wandb.keras import WandbCallback
 
 from common import *
 
+
 def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, batch_size=32, lr=1e-3):
     '''
     Train a model, wrapper for model.fit
@@ -295,7 +296,8 @@ def create_cnn(input_shape=(28, 28, 1),
                conv_padding='valid', conv_bias=True,
                global_pool='none', conv_dropout=0.0,
                hidden_layers=[500], dense_dropout=0.0,
-               activation='relu', dense_bias=True):
+               activation='relu', dense_bias=True,
+               output_shape=10):
     '''
     Creates a CNN
     '''
@@ -346,7 +348,7 @@ def create_cnn(input_shape=(28, 28, 1),
     for layer in hidden_layers:
         model.add(Dense(layer, use_bias=dense_bias, activation=activation))
     model.add(Dropout(dense_dropout))
-    model.add(Dense(10, use_bias=dense_bias, activation='softmax'))
+    model.add(Dense(output_shape, use_bias=dense_bias, activation='softmax'))
 
     return model
 
