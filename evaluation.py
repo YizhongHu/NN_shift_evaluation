@@ -627,3 +627,109 @@ def pad_data(config):
                 np.savez(file, **padded_dataset)
 
         run.log_artifact(pad_data_artifact)
+
+
+# def roll_loc_data(config):
+#     '''
+#     Wandb wrapper for roll_data_loc
+
+#     Parameters:
+#         config: configuruation for inputs
+#     config = {
+#         'duplicate': 1,
+#         'roll_max': 10
+#     }
+#     '''
+#     with wandb.init(project='my-test-project', job_type='roll_loc', config=config) as run:
+#         dataset_shift_artifact = wandb.Artifact(
+#             'mnist-pad-loc', type='dataset',
+#             description='Padded and shifted data with number position',
+#             metadata=dict(config))
+
+#         dataset_pad_artifact = wandb.use_artifact(
+#             'mnist-pad:latest')
+#         data_pad_dir = dataset_pad_artifact.download()
+
+#         for name in ['training', 'validation', 'testing']:
+#             file_name = name + '.npz'
+#             with np.load(os.path.join(data_pad_dir, file_name), 'rb') as file:
+#                 x, y = file['x'], file['y']
+#                 x, y = roll_data_loc(x, y, **config)
+#             with dataset_shift_artifact.new_file(file_name, 'wb') as file:
+#                 np.savez(file, x=x, y=y)
+
+#         run.log_artifact(dataset_shift_artifact)
+
+
+def data_process(inpt, output, description, job_type, project=project_name, compress=False):
+    '''
+    Wandb wrapper for data processing. Loads training, validation, and testing data from input
+    and process them with the function specified
+
+    Parameters:
+        inpt: name of input dataset artifact
+        output: name of output dataset artifact
+        description: description of output dataset artifact
+        job_type: wandb job name
+        project: which project to commit to, default: project_name
+        compress: if the output should be compressed with np.savez_compress, default: False
+
+    Return:
+        a functional wrapper
+
+    Functional input:
+        func: a function that takes model inputs and outputs and keyword arguments
+            Parameters:
+                x: model inputs
+                y: model outputs
+                **kwargs: keyword arguments for data processing
+    Functional output:
+        a function that takes the keyword arguments, processes data accordingly, and uploads to wandb
+            Parameters:
+                config: dict, keyword arguments
+    '''
+    def functional(func):
+        def wrapper(config):
+            with wandb.init(project=project, job_type=job_type, config=config) as run:
+                output_artifact = wandb.Artifact(
+                    output, type='dataset',
+                    description=description,
+                    metadata=dict(config))
+
+                input_artifact = wandb.use_artifact(inpt)
+                input_dir = input_artifact.download()
+
+                for name in ['training', 'validation', 'testing']:
+                    file_name = name + '.npz'
+                    with np.load(os.path.join(input_dir, file_name), 'rb') as file:
+                        x, y = file['x'], file['y']
+                        x, y = func(x, y, **config)
+                    with output_artifact.new_file(file_name, 'wb') as file:
+                        if compress:
+                            np.savez_compressed(file, x=x, y=y)
+                        else:
+                            np.savez(file, x=x, y=y)
+
+                run.log_artifact(output_artifact)
+        return wrapper
+
+    return functional
+
+
+@data_process('mnist-pad:latest', 'mnist-pad-loc', 'Padded and shifted data with number position', 'roll_loc')
+def roll_loc_data(x, y, duplicate=1, roll_max=10):
+    x_samples = list()
+    y_samples = list()
+    for copy in range(duplicate):
+        for x_example, y_example in zip(x, y):
+            coords = np.random.randint(-roll_max, roll_max + 1, size=2)
+            x_samples.append(np.roll(x_example, coords, axis=(
+                0, 1)).reshape((1,) + x_example.shape))
+            y_with_coords = tf.concat((y_example, coords), axis=0)
+            y_samples.append(tf.reshape(
+                y_with_coords, (1,) + y_with_coords.shape))
+
+    x_samples = np.concatenate(x_samples, axis=0)
+    y_samples = tf.concat(y_samples, axis=0)
+
+    return x_samples, y_samples
