@@ -176,16 +176,22 @@ def sample_shift(x, y, sample_rate=.1, shift_max=5):
 
 @data_process('mnist-preprocess:latest', 'mnist-pad', 'Padded MNIST dataset', 'pad_data')
 def pad_data(x, y, pad_width=10):
+    '''
+    Pad the input with some width of zero values
+    '''
     x = np.pad(x, ((0, 0),
                    (pad_width, pad_width),
                    (pad_width, pad_width),
                    (0, 0)),
                constant_values=((0, 0),) * 4)
-    return {'x': x, 'y': y}
+    return x, y
 
 
 @data_process('mnist-pad:latest', 'mnist-pad-loc', 'Padded and shifted data with number position', 'roll_loc')
 def roll_loc_data(x, y, duplicate=1, roll_max=10):
+    '''
+    For each example, roll it in some random direction and record the roll value with two extra dimensions of output
+    '''
     x_samples = list()
     y_samples = list()
     for copy in range(duplicate):
