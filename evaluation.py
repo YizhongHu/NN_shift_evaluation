@@ -14,7 +14,7 @@ import os
 import wandb
 from wandb.keras import WandbCallback
 
-from common import *
+from .common import *
 
 
 def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, batch_size=32, lr=1e-3):

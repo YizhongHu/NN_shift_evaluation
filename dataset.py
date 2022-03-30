@@ -3,7 +3,7 @@ import numpy as np
 import wandb
 import os
 
-from common import *
+from .common import *
 
 
 def load(training_size=50000):
