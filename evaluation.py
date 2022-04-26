@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 
 from tensorflow.keras.layers import Conv2D, MaxPool2D, AveragePooling2D, Flatten, Dense, \
-    Dropout, GlobalAveragePooling2D, GlobalMaxPool2D, ZeroPadding2D
+    Dropout, GlobalAveragePooling2D, GlobalMaxPool2D, ZeroPadding2D, Reshape, Activation
 from math import floor
 
 import datetime
@@ -297,7 +297,7 @@ def create_cnn(input_shape=(28, 28, 1),
                global_pool='none', conv_dropout=0.0,
                hidden_layers=[500], dense_dropout=0.0,
                activation='relu', dense_bias=True,
-               output_shape=10):
+               output_shape=10, output_activation='softmax'):
     '''
     Creates a CNN
     '''
@@ -348,7 +348,13 @@ def create_cnn(input_shape=(28, 28, 1),
     for layer in hidden_layers:
         model.add(Dense(layer, use_bias=dense_bias, activation=activation))
     model.add(Dropout(dense_dropout))
-    model.add(Dense(output_shape, use_bias=dense_bias, activation='softmax'))
+    if output_activation == 'count_prob':
+        model.add(Dense(output_shape[0] * output_shape[1], use_bias=dense_bias))
+        model.add(Reshape(output_shape))
+        model.add(Activation(tf.keras.activations.softmax))
+    else:
+        model.add(Dense(output_shape, use_bias=dense_bias,
+                  activation=output_activation))
 
     return model
 
@@ -405,3 +411,27 @@ def top_k_evaluation(model, exp_name, config):
         wandb.log({'top-k-error': [wandb.Image(
             image, mode='L', caption=f'pred: {pred}, label: {label}, loss: {loss}')
             for image, pred, label, loss in zip(x_test, y_pred, y_test, top_k_val)]})
+
+
+if __name__ == "__main__":
+    model_config = {
+        'input_shape': (120, 120, 1),
+        'conv_size': (7, 7),
+        'conv_layers': [16, 16],
+        'conv_padding': 'lossless',
+        'conv_bias': False,
+        'pool_size': (2, 2),
+        'pool_type': 'none',
+        'global_pool': 'max',
+        'conv_dropout': 0.0,
+        'hidden_layers': [32],
+        'dense_dropout': 0.0,
+        'dense_bias': True,
+        'activation': 'relu',
+        'output_shape': [10, 3],
+        'output_activation': 'count_prob'
+    }
+    model_cnn = create_cnn(**model_config)
+    model_cnn.compile()
+    model_cnn.summary()
+    
