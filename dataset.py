@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import wandb
 import os
+from tqdm import tqdm
 
 from .common import *
 
@@ -134,8 +135,14 @@ def data_process(inpt, output, description, job_type, project=project_name, comp
                 for name in ['training', 'validation', 'testing']:
                     file_name = name + '.npz'
                     with np.load(os.path.join(input_dir, file_name), 'rb') as file:
-                        x = [file[key] for key in x_in_keys]
-                        y = [file[key] for key in y_in_keys]
+                        if isinstance(x_in_keys, list):
+                            x = [file[key] for key in x_in_keys]
+                        elif isinstance(x_in_keys, str):
+                            x = file[x_in_keys]
+                        if isinstance(y_in_keys, list):
+                            y = [file[key] for key in y_in_keys]
+                        elif isinstance(y_in_keys, str):
+                            y = file[y_in_keys]
                         x, y = func(x, y, **config)
                     with output_artifact.new_file(file_name, 'wb') as file:
                         arrays = {**dict(zip(x_out_keys, x)),
@@ -217,3 +224,65 @@ def roll_loc_data(x, y, duplicate=1, roll_max=10):
     y_coords = np.concatenate(y_coords, axis=0)
 
     return x_samples, (y_samples, y_coords)
+
+
+def valid_positions(coords, image_shape=(28, 28), margin_size=(10, 10)):
+    def separate_margin(i, coord):
+        others = coords[i+1:]
+        difference = np.abs(coord - others)
+        return np.all((difference[:, 0] >= image_shape[0] + margin_size[0]) | (difference[:, 1] >= image_shape[1] + margin_size[1]))
+
+    return all(separate_margin(i, coord) for i, coord in enumerate(coords))
+
+
+@data_process(
+    inpt='mnist-preprocess:latest', output='mnist-multiple',
+    description='Multiple numbers on a canvas of a fixed size',
+    job_type='superimpose_data', project=project_name, compress=True)
+def superimpose_data(x, y, num_images=2, sample_rate=1/6, canvas_shape=(120, 120), 
+                     image_shape=(28, 28), margin_size=(10, 10)):
+    if num_images >= ((canvas_shape[0] + margin_size[0]) // (image_shape[0] + margin_size[0])) * ((canvas_shape[1] + margin_size[1]) // (image_shape[1] + margin_size[0])) / 2:
+        raise ValueError('Not Enough Space')
+
+    canvas_shape = np.array(canvas_shape)
+    image_shape = np.array(image_shape)
+
+    x_samples = list()
+    y_samples = list()
+    for _ in tqdm(range(int(len(x) * sample_rate))):
+        indices = np.random.choice(len(x), replace=False, size=num_images)
+        coords = np.random.randint(
+            0, high=canvas_shape-image_shape, size=(num_images, 2))
+        while not valid_positions(coords, image_shape=image_shape, margin_size=margin_size):
+            coords = np.random.randint(
+                0, high=canvas_shape-image_shape, size=(num_images, 2))
+
+        canvas = np.zeros((1, *canvas_shape, 1))
+        images = x[indices]
+        for image, coord in zip(images, coords):
+            canvas[:, coord[0]:(coord[0] + image_shape[0]), coord[1]:(
+                coord[1] + image_shape[1]), :] = image.reshape((1, *image_shape, 1))
+
+        labels = tf.reduce_sum(tf.gather(y, indices), axis=0)
+        labels = tf.cast(labels, tf.int32)
+        labels = tf.gather(tf.eye(num_images+1), labels)
+        labels = tf.expand_dims(labels, axis=0)
+
+        x_samples.append(canvas)
+        y_samples.append(labels)
+
+    x_samples = np.concatenate(x_samples, axis=0)
+    y_samples = tf.concat(y_samples, axis=0)
+
+    return x_samples, y_samples
+
+
+if __name__ == '__main__':
+    config = {
+        'num_images': 2,
+        'sample_rate': 1/5,
+        'canvas_shape': (120, 120),
+        'image_shape': (28, 28),
+        'margin_size': (10, 10)
+    }
+    superimpose_data(config)
