@@ -15,6 +15,7 @@ import wandb
 from wandb.keras import WandbCallback
 
 from .common import *
+from .metrics import FalseNegative, FalsePositive, CountingError, DuplicateError
 
 
 def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, batch_size=32, lr=1e-3):
@@ -99,6 +100,8 @@ def train_model(create_fn, exp_name, config):
             dataset_artifact = wandb.use_artifact('mnist-pad:latest')
         elif train_config['dataset'] == 'mnist-shift-pad':
             dataset_artifact = wandb.use_artifact('mnist-shift-pad:latest')
+        elif train_config['dataset'] == 'mnist-multiple':
+            dataset_artifact = wandb.use_artifact('mnist-multiple:latest')
         else:
             raise ValueError('Incorrect name of dataset')
 
@@ -110,14 +113,28 @@ def train_model(create_fn, exp_name, config):
                 x, y = file['x'], file['y']
                 return x, y
 
-        (x_trn, y_trn), (x_val, y_val), (_, _) = tuple(load_data(name)
-                                                       for name in ['training', 'validation', 'testing'])
+        (x_trn, y_trn), (x_val, y_val) = tuple(load_data(name)
+                                               for name in ['training', 'validation'])
 
         # Create model and train
         model = create_fn(**model_config)
-        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=train_config['learning_rate']),
-                      loss=tf.keras.losses.CategoricalCrossentropy(),
-                      metrics=[tf.keras.metrics.CategoricalAccuracy(name='acc')])
+        if train_config['metric'] == 'accuracy':
+            model.compile(
+                optimizer=tf.keras.optimizers.Adam(learning_rate=train_config['learning_rate']),
+                loss=tf.keras.losses.CategoricalCrossentropy(),
+                metrics=[tf.keras.metrics.CategoricalAccuracy(name='acc')])
+            
+        elif train_config['metric'] == 'counting':
+            model.compile(
+                optimizer=tf.keras.optimizers.Adam(learning_rate=train_config['learning_rate']),
+                loss=tf.keras.losses.CategoricalCrossentropy(),
+                metrics=[CountingError(name='err'),
+                         FalseNegative(name='fn'),
+                         FalsePositive(name='fp'),
+                         DuplicateError(name='dup_err')])
+        else:
+            pass
+        
         model.summary()
         model.fit(x=x_trn, y=y_trn,
                   validation_data=(x_val, y_val),
@@ -414,6 +431,8 @@ def top_k_evaluation(model, exp_name, config):
 
 
 if __name__ == "__main__":
+    exp_name = ''
+    dataset_name = 'mnist-multiple'
     model_config = {
         'input_shape': (120, 120, 1),
         'conv_size': (7, 7),
@@ -431,7 +450,16 @@ if __name__ == "__main__":
         'output_shape': [10, 3],
         'output_activation': 'count_prob'
     }
+    config = {
+        "model": model_config,
+        "train": {
+            "model": 'CNN',
+            "dataset": dataset_name,
+            "learning_rate": 1e-3,
+            "epochs": 40,
+            "batch_size": 32,
+            "metric": 'counting'
+        }}
     model_cnn = create_cnn(**model_config)
-    model_cnn.compile()
-    model_cnn.summary()
+    train_model(create_cnn, exp_name, config)
     
