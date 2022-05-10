@@ -145,8 +145,15 @@ def data_process(inpt, output, description, job_type, project=project_name, comp
                             y = file[y_in_keys]
                         x, y = func(x, y, **config)
                     with output_artifact.new_file(file_name, 'wb') as file:
-                        arrays = {**dict(zip(x_out_keys, x)),
-                                  **dict(zip(y_out_keys, y))}
+                        if isinstance(x_out_keys, list):
+                            x_dict = dict(zip(x_out_keys, x))
+                        elif isinstance(x_out_keys, str):
+                            x_dict = {x_out_keys: x}
+                        if isinstance(y_out_keys, list):
+                            y_dict = dict(zip(y_out_keys, y))
+                        elif isinstance(y_out_keys, str):
+                            y_dict = {y_out_keys: y}
+                        arrays = {**x_dict, **y_dict}
                         if compress:
                             np.savez_compressed(file, **arrays)
                         else:
@@ -239,7 +246,7 @@ def valid_positions(coords, image_shape=(28, 28), margin_size=(10, 10)):
     inpt='mnist-preprocess:latest', output='mnist-multiple',
     description='Multiple numbers on a canvas of a fixed size',
     job_type='superimpose_data', project=project_name, compress=True)
-def superimpose_data(x, y, num_images=2, sample_rate=1/6, canvas_shape=(120, 120), 
+def superimpose_data(x, y, num_images=2, sample_rate=1/6, canvas_shape=(120, 120),
                      image_shape=(28, 28), margin_size=(10, 10)):
     if num_images >= ((canvas_shape[0] + margin_size[0]) // (image_shape[0] + margin_size[0])) * ((canvas_shape[1] + margin_size[1]) // (image_shape[1] + margin_size[0])) / 2:
         raise ValueError('Not Enough Space')
