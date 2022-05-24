@@ -15,7 +15,7 @@ import wandb
 from wandb.keras import WandbCallback
 
 from .common import *
-from .metrics import FalseNegative, FalsePositive, CountingError, DuplicateError
+from .metrics import FalseNegative, FalsePositive, CountingError, DuplicateOmission, DuplicateError
 
 
 def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, batch_size=32, lr=1e-3):
@@ -131,6 +131,7 @@ def train_model(create_fn, exp_name, config):
                 metrics=[CountingError(name='err'),
                          FalseNegative(name='fn'),
                          FalsePositive(name='fp'),
+                         DuplicateOmission(name='omit'),
                          DuplicateError(name='dup_err')])
         else:
             pass
