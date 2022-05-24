@@ -248,7 +248,13 @@ def valid_positions(coords, image_shape=(28, 28), margin_size=(10, 10)):
     job_type='superimpose_data', project=project_name, compress=True)
 def superimpose_data(x, y, num_images=2, sample_rate=1/6, canvas_shape=(120, 120),
                      image_shape=(28, 28), margin_size=(10, 10)):
-    if num_images >= ((canvas_shape[0] + margin_size[0]) // (image_shape[0] + margin_size[0])) * ((canvas_shape[1] + margin_size[1]) // (image_shape[1] + margin_size[0])) / 2:
+    
+    if isinstance(num_images, int):
+        max_num_images = num_images
+    elif isinstance(num_images, tuple):
+        assert len(num_images) == 2
+        max_num_images = num_images[1]
+    if max_num_images >= ((canvas_shape[0] + margin_size[0]) // (image_shape[0] + margin_size[0])) * ((canvas_shape[1] + margin_size[1]) // (image_shape[1] + margin_size[0])) / 2:
         raise ValueError('Not Enough Space')
 
     canvas_shape = np.array(canvas_shape)
@@ -257,12 +263,19 @@ def superimpose_data(x, y, num_images=2, sample_rate=1/6, canvas_shape=(120, 120
     x_samples = list()
     y_samples = list()
     for _ in tqdm(range(int(len(x) * sample_rate))):
-        indices = np.random.choice(len(x), replace=False, size=num_images)
+
+        if isinstance(num_images, int):
+            _num_images = num_images
+        elif isinstance(num_images, tuple):
+            assert len(num_images) == 2
+            _num_images = np.random.randint(num_images[0], num_images[1]+1)
+
+        indices = np.random.choice(len(x), replace=False, size=_num_images)
         coords = np.random.randint(
-            0, high=canvas_shape-image_shape, size=(num_images, 2))
+            0, high=canvas_shape-image_shape, size=(_num_images, 2))
         while not valid_positions(coords, image_shape=image_shape, margin_size=margin_size):
             coords = np.random.randint(
-                0, high=canvas_shape-image_shape, size=(num_images, 2))
+                0, high=canvas_shape-image_shape, size=(_num_images, 2))
 
         canvas = np.zeros((1, *canvas_shape, 1))
         images = x[indices]
@@ -272,7 +285,7 @@ def superimpose_data(x, y, num_images=2, sample_rate=1/6, canvas_shape=(120, 120
 
         labels = tf.reduce_sum(tf.gather(y, indices), axis=0)
         labels = tf.cast(labels, tf.int32)
-        labels = tf.gather(tf.eye(num_images+1), labels)
+        labels = tf.gather(tf.eye(max_num_images+1), labels)
         labels = tf.expand_dims(labels, axis=0)
 
         x_samples.append(canvas)
@@ -286,9 +299,9 @@ def superimpose_data(x, y, num_images=2, sample_rate=1/6, canvas_shape=(120, 120
 
 if __name__ == '__main__':
     config = {
-        'num_images': 2,
+        'num_images': (1, 2),
         'sample_rate': 1/5,
-        'canvas_shape': (120, 120),
+        'canvas_shape': (125, 125),
         'image_shape': (28, 28),
         'margin_size': (10, 10)
     }
