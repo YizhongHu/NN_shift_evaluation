@@ -61,7 +61,7 @@ def duplicate_omission(y_true, y_pred):
     y_true = y_true[indices]
     y_pred = y_pred[indices]
 
-    omissions = tf.where((y_true > 1, y_pred >= 1),
+    omissions = tf.where(tf.logical_and(y_true > 1, y_pred >= 1),
                          x=tf.abs(y_true - y_pred), y=0)
     omissions = tf.reduce_sum(omissions, axis=-1)
     omissions = tf.cast(omissions, tf.keras.backend.floatx())
