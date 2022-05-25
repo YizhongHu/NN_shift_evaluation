@@ -255,6 +255,8 @@ def evaluate_model(model, exp_name, config):
             dataset_artifact = wandb.use_artifact('mnist-pad:latest')
         elif config['dataset'] == 'mnist-shift-pad':
             dataset_artifact = wandb.use_artifact('mnist-shift-pad:latest')
+        elif config['dataset'] == 'mnist-multiple':
+            dataset_artifact = wandb.use_artifact('mnist-multiple:latest')
         else:
             raise ValueError('Incorrect name of dataset')
 
@@ -270,8 +272,9 @@ def evaluate_model(model, exp_name, config):
 
         # Evaluate with the loaded data
         res = model.evaluate(x_t, y_t, callbacks=[])
-        run.summary['test_loss'] = res[0]
-        run.summary['test_acc'] = res[1]
+        for value, metric in zip(res, model.metrics):
+            run.summary['test_' + metric.__name__] = value
+        
 
         # Check the accuracies on shift
         if config['dataset'] in {'mnist', 'mnist-shift'}:
@@ -285,6 +288,8 @@ def evaluate_model(model, exp_name, config):
             # Evaluate Shifted Accuracies
             accuracies_mlp = accuracy_on_roll(
                 model, x_t, y_t, max_shift=config['max_shift'])
+        elif config['dataset'] == 'mnist-multiple':
+            return
 
         # Record run results
         run.summary['accuracies'] = accuracies_mlp
