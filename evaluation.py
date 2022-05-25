@@ -15,7 +15,7 @@ import wandb
 from wandb.keras import WandbCallback
 
 from .common import *
-from .metrics import FalseNegative, FalsePositive, CountingError, DuplicateOmission, DuplicateError
+from .metrics import FalseNegative, FalsePositive, CountingError, DuplicateOmission, DuplicateError, METRICS_DICT
 
 
 def train(model, training_x, training_y, testing_x, testing_y, name, epoch=1, batch_size=32, lr=1e-3):
@@ -377,12 +377,12 @@ def create_cnn(input_shape=(28, 28, 1),
     return model
 
 
-def load_model(id):
+def load_model(id, custom_objects=None):
     '''
     Load the model with the given training run id
     '''
     with wandb.init(project=project_name, id=id, resume=True) as run:
-        model = tf.keras.models.load_model(wandb.restore('model-best.h5').name)
+        model = tf.keras.models.load_model(wandb.restore('model-best.h5').name, custom_objects=custom_objects)
         # run_info = {'group': run.group}
         return model
 

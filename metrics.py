@@ -106,3 +106,6 @@ class DuplicateError(tf.keras.metrics.MeanMetricWrapper):
     def __init__(self, name='duplicate_error', dtype=None):
         super(DuplicateError, self).__init__(
             duplicate_error, name, dtype=dtype)
+
+metrics = {CountingError, FalseNegative, FalsePositive, DuplicateOmission, DuplicateError}
+METRICS_DICT = {metric.__name__:metric for metric in metrics}
