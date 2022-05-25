@@ -5,10 +5,10 @@ def counting_error(y_true, y_pred):
     y_true = tf.argmax(y_true, axis=-1)
     y_pred = tf.argmax(y_pred, axis=-1)
 
-    accuracy = tf.reduce_sum(tf.abs(y_true - y_pred), axis=-1)
-    accuracy = tf.cast(accuracy, tf.keras.backend.floatx())
+    error = tf.reduce_sum(tf.abs(y_true - y_pred), axis=-1)
+    error = tf.cast(error, tf.keras.backend.floatx())
 
-    return accuracy
+    return error
 
 
 class CountingError(tf.keras.metrics.MeanMetricWrapper):
@@ -107,5 +107,27 @@ class DuplicateError(tf.keras.metrics.MeanMetricWrapper):
         super(DuplicateError, self).__init__(
             duplicate_error, name, dtype=dtype)
 
-metrics = {CountingError, FalseNegative, FalsePositive, DuplicateOmission, DuplicateError}
-METRICS_DICT = {metric.__name__:metric for metric in metrics}
+
+def singleton_error(y_true, y_pred):
+    y_true = tf.argmax(y_true, axis=-1)
+    y_pred = tf.argmax(y_pred, axis=-1)
+
+    indices = (tf.reduce_sum(y_true, axis=-1) == 1)
+
+    y_true = y_true[indices]
+    y_pred = y_pred[indices]
+    
+    error = tf.reduce_sum(tf.abs(y_true - y_pred), axis=-1)
+    error = tf.cast(error, tf.keras.backend.floatx())
+    
+    return error
+
+class SingletonError(tf.keras.metrics.MeanMetricWrapper):
+    def __init__(self, name='singleton_error', dtype=None):
+        super(SingletonError, self).__init__(
+            duplicate_error, name, dtype=dtype)
+
+
+metrics = {CountingError, FalseNegative,
+           FalsePositive, DuplicateOmission, DuplicateError, SingletonError}
+METRICS_DICT = {metric.__name__: metric for metric in metrics}
