@@ -273,7 +273,7 @@ def evaluate_model(model, exp_name, config):
         # Evaluate with the loaded data
         res = model.evaluate(x_t, y_t, callbacks=[])
         for value, metric in zip(res, model.metrics):
-            run.summary['test_' + metric.__name__] = value
+            run.summary['test_' + metric.name] = value
         
 
         # Check the accuracies on shift
